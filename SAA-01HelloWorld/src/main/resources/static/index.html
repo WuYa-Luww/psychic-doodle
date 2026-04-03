@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>医疗资讯大屏 - 嘎嘎 AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        @keyframes heartbeat-flow { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -200; } }
+        .heartbeat-line { animation: heartbeat-flow 2s linear infinite; }
+        /* 右下角头像 */
+        .bottom-right-avatar {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.2);
+            overflow: hidden;
+            cursor: pointer;
+            z-index: 1000;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .bottom-right-avatar:hover {
+            transform: scale(1.08);
+            box-shadow: 0 0 24px rgba(168, 85, 247, 0.4);
+        }
+        .bottom-right-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-[#050505] text-zinc-400 antialiased overflow-hidden">
+    <!-- 紫色弥散光 -->
+    <div class="fixed top-0 right-0 w-[600px] h-[600px] pointer-events-none"
+         style="background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.1) 0%, transparent 70%);"></div>
+
+    <!-- 背景心率波形图 -->
+    <div class="fixed inset-0 flex items-center justify-center pointer-events-none opacity-20">
+        <svg width="100%" height="400" viewBox="0 0 1200 400" preserveAspectRatio="none">
+            <path class="heartbeat-line" d="M0,200 L100,200 L150,200 L180,80 L210,320 L240,200 L300,200 L400,200 L430,80 L460,320 L490,200 L600,200 L700,200 L730,80 L760,320 L790,200 L900,200 L1000,200 L1030,80 L1060,320 L1090,200 L1200,200"
+                  fill="none" stroke="#4ade80" stroke-width="3" stroke-dasharray="200" stroke-linecap="round"/>
+        </svg>
+    </div>
+
+    <!-- 医疗资讯展示层 -->
+    <div id="medicalLayer" class="min-h-screen flex items-center justify-center p-8 relative z-10 transition-all duration-500">
+        <div class="w-full max-w-4xl bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-2xl">
+            <div class="p-8">
+                <h1 class="text-2xl font-semibold text-white tracking-wide mb-8">医疗资讯大屏</h1>
+                <div id="cardsContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 transition-all duration-500">
+                    <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-5 hover:border-zinc-600 transition-colors">
+                        <div class="text-xs text-zinc-500 tracking-wide mb-2">2024.03.15</div>
+                        <h3 class="text-white font-medium tracking-wide">基因组学突破</h3>
+                        <p class="text-sm text-zinc-500 mt-2 tracking-wide">CRISPR 基因编辑技术在遗传病治疗领域取得重大进展</p>
+                    </div>
+                    <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-5 hover:border-zinc-600 transition-colors">
+                        <div class="text-xs text-zinc-500 tracking-wide mb-2">2024.03.14</div>
+                        <h3 class="text-white font-medium tracking-wide">AI 辅助诊断现状</h3>
+                        <p class="text-sm text-zinc-500 mt-2 tracking-wide">深度学习模型在医学影像识别准确率突破 97%</p>
+                    </div>
+                    <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-5 hover:border-zinc-600 transition-colors">
+                        <div class="text-xs text-zinc-500 tracking-wide mb-2">2024.03.13</div>
+                        <h3 class="text-white font-medium tracking-wide">远程医疗新规</h3>
+                        <p class="text-sm text-zinc-500 mt-2 tracking-wide">国家卫健委发布互联网诊疗质量管理新规范</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右下角头像 - 医疗助手入口 -->
+    <div class="bottom-right-avatar" title="点击与嘎嘎 AI 对话" onclick="openAI()">
+        <img src="/static/img.png" alt="嘎嘎 AI 助手">
+    </div>
+
+    <!-- AI 交互层 -->
+    <div id="aiLayer" class="fixed inset-0 flex items-center justify-center p-8 z-30 pointer-events-none opacity-0 translate-y-8 transition-all duration-500">
+        <div class="w-full max-w-2xl bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl pointer-events-auto">
+            <div class="px-6 py-4 border-b border-zinc-800">
+                <h2 class="text-lg font-semibold text-white tracking-wide">嘎嘎 AI 助手</h2>
+                <p class="text-sm text-zinc-500 mt-1">您的智能医疗助手</p>
+            </div>
+            <div id="chatMessages" class="h-80 overflow-y-auto p-6 space-y-4">
+                <div class="flex justify-start">
+                    <div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md">
+                        <p class="text-sm text-zinc-300">我是嘎嘎，你的智能医疗助手。有什么可以帮您？</p>
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-zinc-800 flex gap-3">
+                <input type="text" id="messageInput" placeholder="请输入您的问题..."
+                    class="flex-1 px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
+                    onkeypress="if(event.key==='Enter')sendMessage()">
+                <button onclick="sendMessage()" class="px-5 py-2.5 bg-zinc-100 text-zinc-900 font-medium rounded-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300">发送</button>
+                <button onclick="closeAI()" class="px-5 py-2.5 bg-zinc-800 text-zinc-300 font-medium rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all duration-300">返回</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const medicalLayer = document.getElementById('medicalLayer');
+        const aiLayer = document.getElementById('aiLayer');
+        const cardsContainer = document.getElementById('cardsContainer');
+        let isOpen = false;
+
+        // 存储 sessionId，用于保持对话记忆
+        let currentSessionId = localStorage.getItem('medical_session_id') || '';
+
+        function openAI() {
+            if (isOpen) return;
+            isOpen = true;
+            cardsContainer.classList.add('opacity-0');
+            setTimeout(() => {
+                medicalLayer.classList.add('opacity-0', 'blur-sm');
+                aiLayer.classList.remove('opacity-0', 'translate-y-8');
+                aiLayer.classList.add('opacity-100', 'translate-y-0');
+            }, 200);
+        }
+
+        function closeAI() {
+            isOpen = false;
+            aiLayer.classList.add('opacity-0', 'translate-y-8');
+            aiLayer.classList.remove('opacity-100', 'translate-y-0');
+            setTimeout(() => {
+                medicalLayer.classList.remove('opacity-0', 'blur-sm');
+                cardsContainer.classList.remove('opacity-0');
+            }, 200);
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            const chatMessages = document.getElementById('chatMessages');
+
+            // 添加用户消息
+            chatMessages.innerHTML += `<div class="flex justify-end"><div class="max-w-[75%] px-4 py-3 bg-zinc-100 text-zinc-900 rounded-2xl rounded-br-md"><p class="text-sm">${escapeHtml(message)}</p></div></div>`;
+            input.value = '';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // 添加 loading 状态
+            const loadingId = 'loading-' + Date.now();
+            chatMessages.innerHTML += `<div class="flex justify-start"><div id="${loadingId}" class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><p class="text-sm text-zinc-300">嘎嘎思考中...</p></div></div>`;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // 调用后端 API，使用存储的 sessionId
+            fetch('http://localhost:8002/api/medical/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    patientId: 'user_001',
+                    sessionId: currentSessionId,
+                    message: message
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // 首次请求时保存返回的 sessionId
+                if (!currentSessionId && data.sessionId) {
+                    currentSessionId = data.sessionId;
+                    localStorage.setItem('medical_session_id', currentSessionId);
+                }
+
+                // 删除 loading 消息
+                document.getElementById(loadingId)?.remove();
+
+                // 显示 AI 回复
+                const replyText = data.reply || '抱歉，我还没学会回答这个问题。';
+                chatMessages.innerHTML += `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><p class="text-sm text-zinc-300">${escapeHtml(replyText)}</p></div></div>`;
+
+                // 处理紧急提示
+                if (data.emergency) {
+                    chatMessages.innerHTML += `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-red-900/50 border border-red-700 rounded-2xl rounded-bl-md"><p class="text-sm text-red-200">⚠️ ${escapeHtml(data.emergencyMessage || '紧急情况请尽快就医')}</p></div></div>`;
+                }
+
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            })
+            .catch(error => {
+                // 删除 loading 消息
+                document.getElementById(loadingId)?.remove();
+
+                // 显示错误信息
+                chatMessages.innerHTML += `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><p class="text-sm text-red-400">请求失败：${error.message}</p></div></div>`;
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+
+            // Focus input after sending message
+            document.getElementById('messageInput').focus();
+        }
+
+        // HTML 转义函数，防止 XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Medical layer is now clickable to open AI directly
+        medicalLayer.addEventListener('click', function() {
+            openAI();
+        });
+    </script>
+</body>
+</html>
