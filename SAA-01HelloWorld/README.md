@@ -88,7 +88,8 @@ SAA-01HelloWorld/
 │   ├── controller/                       # 控制器层
 │   │   ├── ChatController.java           # 基础聊天接口
 │   │   ├── ChatRequest.java              # 请求 DTO
-│   │   └── AgentController.java          # Agent 智能体接口
+│   │   ├── AgentController.java          # Agent 智能体接口
+│   │   └── RagController.java            # RAG 知识库管理接口
 │   │
 │   ├── kb/                               # 知识库服务
 │   │   └── KnowledgeBaseService.java     # 知识库 CRUD + 向量检索
@@ -114,6 +115,8 @@ SAA-01HelloWorld/
 │   │       └── MedicalTools.java         # 症状评估、科室推荐
 │   │
 │   └── service/                          # 服务层
+│       ├── RagService.java               # RAG 检索增强生成服务
+│       ├── MilvusEmbeddingStore.java     # Milvus Embedding 存储实现
 │       ├── MilvusKnowledgeService.java   # Milvus 向量检索服务
 │       └── PdfParseService.java          # PDF 文档解析服务
 │
@@ -237,6 +240,62 @@ Content-Type: application/json
 DELETE /api/medical/session/{sessionId}
 ```
 
+### 5. RAG 知识库管理
+
+#### 添加单条文档
+```http
+POST /api/kb/add
+Content-Type: application/json
+
+{
+  "content": "高血压患者应每日定时测量血压，保持低盐饮食。",
+  "source": "健康指南"
+}
+```
+
+#### 批量添加文档
+```http
+POST /api/kb/batch
+Content-Type: application/json
+
+[
+  {"content": "文档内容1", "source": "来源1"},
+  {"content": "文档内容2", "source": "来源2"}
+]
+```
+
+#### 搜索知识库
+```http
+GET /api/kb/search?query=高血压&topK=5&minScore=0.7
+```
+
+**响应示例：**
+```json
+[
+  {
+    "id": "1234567890",
+    "score": 0.85,
+    "content": "高血压患者应每日定时测量血压...",
+    "source": "健康指南"
+  }
+]
+```
+
+#### 获取 RAG 上下文
+```http
+GET /api/kb/context?query=高血压注意事项&topK=3
+```
+
+#### 获取知识库统计
+```http
+GET /api/kb/stats
+```
+
+#### 删除文档
+```http
+DELETE /api/kb/{id}
+```
+
 ---
 
 ## 🛠️ 核心模块说明
@@ -258,6 +317,26 @@ DELETE /api/medical/session/{sessionId}
 | `put(id, title, content)` | 写入知识条目 |
 | `get(id)` | 按 ID 读取知识 |
 | `search(query, topK)` | 语义相似度搜索 |
+
+### 📖 RAG 服务 (RagService)
+
+基于 Milvus + ZhipuAI Embedding 的知识库服务：
+
+| 功能 | 说明 |
+|------|------|
+| 向量存储 | Milvus + COSINE 相似度度量 |
+| Embedding | ZhipuAI Embedding (1024维) |
+| 检索阈值 | 默认 minScore=0.7 |
+| 上下文构建 | 自动组装检索结果为 Prompt 上下文 |
+
+| 方法 | 功能 |
+|------|------|
+| `addDocument(content, source)` | 添加单条文档 |
+| `addDocuments(List)` | 批量添加文档 |
+| `search(query, topK, minScore)` | 语义检索 |
+| `buildContext(query, topK)` | 构建 RAG 上下文 |
+| `getDocumentCount()` | 获取文档数量 |
+| `deleteDocument(id)` | 删除文档 |
 
 ### 🤖 Agent 工具集
 
@@ -303,7 +382,11 @@ DELETE /api/medical/session/{sessionId}
 - [x] 智谱 AI 模型对接
 - [x] 医疗安全机制
 - [x] 会话管理
-- [ ] Milvus RAG 完整集成
+- [x] Milvus RAG 完整集成
+  - [x] 向量存储 (COSINE 相似度)
+  - [x] 知识库 CRUD API
+  - [x] 语义检索 (阈值 0.7)
+  - [x] RAG 上下文构建
 - [ ] PDF 文档解析入库
 - [ ] 多模态支持（语音、图像）
 - [ ] 用户画像与个性化推荐

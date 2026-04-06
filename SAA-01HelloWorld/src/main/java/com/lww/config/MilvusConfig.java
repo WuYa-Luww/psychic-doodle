@@ -1,18 +1,22 @@
 package com.lww.config;
 
-import io.milvus.param.MilvusParam;
-import io.milvus.param.connect.ConnectParam;
-import io.milvus.grpc.DataType;
-import io.milvus.orm.collection.CollectionSchema;
-import io.milvus.orm.index.IndexType;
-import io.milvus.orm.index.IndexMetaData;
+import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.client.ConnectConfig;
+import io.milvus.v2.service.collection.request.CreateCollectionReq;
+import io.milvus.v2.service.collection.request.AddFieldReq;
+import io.milvus.v2.service.collection.request.HasCollectionReq;
+import io.milvus.v2.service.collection.request.LoadCollectionReq;
+import io.milvus.v2.common.DataType;
+import io.milvus.v2.common.IndexParam;
+import io.milvus.v2.service.index.request.CreateIndexReq;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.util.ArrayList;
-import java.util.List;
-
+/**
+ * Milvus Vector Database Configuration
+ * Using Milvus Java SDK 2.5 V2 API
+ */
 @Configuration
 public class MilvusConfig {
 
@@ -20,86 +24,132 @@ public class MilvusConfig {
     private String milvusEndpoint;
 
     @Value("${milvus.database:default}")
-    private String database;
+    private String databaseName;
+
+    @Value("${milvus.collection:latitude15}")
+    private String collectionName;
+
+    /**
+     * ZhipuAI Embedding model output dimension: 1024
+     */
+    private static final int EMBEDDING_DIMENSION = 1024;
 
     @Bean
-    public io.milvus.client.MilvusClient milvusClient() {
-        return new io.milvus.client.MilvusClient(
-            MilvusParam.newBuilder()
-                .withHost(milvusEndpoint.split(":")[0])
-                .withPort(Integer.parseInt(milvusEndpoint.split(":")[1]))
-                .withAuthorization("")
-                .build()
-        );
+    public MilvusClientV2 milvusClientV2() {
+        ConnectConfig connectConfig = ConnectConfig.builder()
+                .uri("http://" + milvusEndpoint)
+                .dbName(databaseName)
+                .build();
+        return new MilvusClientV2(connectConfig);
     }
 
     @Bean
-    public void initMilvusCollection(io.milvus.client.MilvusClient client) {
-        String collectionName = "medical_kb";
+    public String milvusCollectionName() {
+        return collectionName;
+    }
 
-        // 检查集合是否已存在，不存在则创建
-        if (!client.hasCollection(io.milvus.param.collection.HasCollectionReq.builder()
-                .collectionName(collectionName).build()).getValue()) {
+    @Bean
+    public int embeddingDimension() {
+        return EMBEDDING_DIMENSION;
+    }
 
-            // 定义 schema
-            List<io.milvus.grpc.FieldSchema> fieldSchemas = new ArrayList<>();
-
-            // ID 字段 (string)
-            fieldSchemas.add(io.milvus.grpc.FieldSchema.newBuilder()
-                    .setFieldName("id")
-                    .setDataType(DataType.VarChar)
-                    .setIsPrimaryKey(true)
-                    .addMaxLength(64)
-                    .build());
-
-            // 向量字段 (float vector, dim=1536 for glm-embedding)
-            fieldSchemas.add(io.milvus.grpc.FieldSchema.newBuilder()
-                    .setFieldName("vector")
-                    .setDataType(DataType.FloatVector)
-                    .setMaxDimension(1536)
-                    .build());
-
-            // 内容字段 (text)
-            fieldSchemas.add(io.milvus.grpc.FieldSchema.newBuilder()
-                    .setFieldName("content")
-                    .setDataType(DataType.VarChar)
-                    .addMaxLength(65535)
-                    .build());
-
-            // 来源文档字段
-            fieldSchemas.add(io.milvus.grpc.FieldSchema.newBuilder()
-                    .setFieldName("source")
-                    .setDataType(DataType.VarChar)
-                    .addMaxLength(256)
-                    .build());
-
-            CollectionSchema schema = CollectionSchema.newBuilder()
-                    .withCollectionName(collectionName)
-                    .addFieldSchema(fieldSchemas.get(0))
-                    .addFieldSchema(fieldSchemas.get(1))
-                    .addFieldSchema(fieldSchemas.get(2))
-                    .addFieldSchema(fieldSchemas.get(3))
-                    .withDescription("Medical knowledge base")
+    /**
+     * Initialize Milvus collection on startup
+     */
+    @Bean
+    public boolean initMilvusCollection(MilvusClientV2 client) {
+        try {
+            // Check if collection exists
+            HasCollectionReq hasCollectionReq = HasCollectionReq.builder()
+                    .collectionName(collectionName)
                     .build();
 
-            client.createCollection(io.milvus.param.collection.CreateCollReq.builder()
-                    .collectionSchema(schema)
-                    .numPartitions(10)
-                    .collectionName(collectionName)
-                    .build());
+            Boolean hasCollection = client.hasCollection(hasCollectionReq);
 
-            // 创建索引
-            IndexType indexType = IndexType.IP; // Inner Product
-            io.milvus.param.index.IndexParams indexParams = io.milvus.param.index.IndexParams.builder()
-                    .addIndex("vector", indexType.name(), "IVF_FLAT", 64)
-                    .build();
+            if (hasCollection == null || !hasCollection) {
+                createCollection(client, collectionName, EMBEDDING_DIMENSION);
+            } else {
+                System.out.println("Milvus collection '" + collectionName + "' already exists");
+            }
 
-            client.CreateIndex(io.milvus.param.index.CreateIndexReq.builder()
-                    .collectionName(collectionName)
-                    .indexParams(indexParams)
-                    .build());
+            // Load collection into memory (required for search)
+            loadCollection(client, collectionName);
 
-            System.out.println("Milvus collection 'medical_kb' created successfully");
+            return true;
+        } catch (Exception e) {
+            System.err.println("Failed to initialize Milvus collection: " + e.getMessage());
+            e.printStackTrace();
+            return false;
         }
+    }
+
+    private void loadCollection(MilvusClientV2 client, String collectionName) {
+        LoadCollectionReq loadCollectionReq = LoadCollectionReq.builder()
+                .collectionName(collectionName)
+                .build();
+        client.loadCollection(loadCollectionReq);
+        System.out.println("Milvus collection '" + collectionName + "' loaded into memory");
+    }
+
+    private void createCollection(MilvusClientV2 client, String collectionName, int dimension) {
+        // Create collection schema
+        CreateCollectionReq.CollectionSchema schema = CreateCollectionReq.CollectionSchema.builder()
+                .build();
+
+        // Add ID field (VarChar as primary key)
+        schema.addField(AddFieldReq.builder()
+                .fieldName("id")
+                .dataType(DataType.VarChar)
+                .isPrimaryKey(true)
+                .autoID(false)
+                .maxLength(64)
+                .build());
+
+        // Add vector field
+        schema.addField(AddFieldReq.builder()
+                .fieldName("vector")
+                .dataType(DataType.FloatVector)
+                .dimension(dimension)
+                .build());
+
+        // Add content field
+        schema.addField(AddFieldReq.builder()
+                .fieldName("content")
+                .dataType(DataType.VarChar)
+                .maxLength(65535)
+                .build());
+
+        // Add source field
+        schema.addField(AddFieldReq.builder()
+                .fieldName("source")
+                .dataType(DataType.VarChar)
+                .maxLength(256)
+                .build());
+
+        // Create collection
+        CreateCollectionReq createCollectionReq = CreateCollectionReq.builder()
+                .collectionName(collectionName)
+                .collectionSchema(schema)
+                .build();
+
+        client.createCollection(createCollectionReq);
+
+        // Create index on vector field
+        // 使用 COSINE 余弦相似度，分数范围 0-1，更直观
+        IndexParam indexParam = IndexParam.builder()
+                .fieldName("vector")
+                .indexType(IndexParam.IndexType.IVF_FLAT)
+                .metricType(IndexParam.MetricType.COSINE)
+                .extraParams(java.util.Map.of("nlist", 1024))
+                .build();
+
+        CreateIndexReq createIndexReq = CreateIndexReq.builder()
+                .collectionName(collectionName)
+                .indexParams(java.util.Collections.singletonList(indexParam))
+                .build();
+
+        client.createIndex(createIndexReq);
+
+        System.out.println("Milvus collection '" + collectionName + "' created successfully with " + dimension + " dimensions");
     }
 }

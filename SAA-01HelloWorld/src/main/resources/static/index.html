@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>医疗资讯大屏 - 嘎嘎 AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Markdown parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         @keyframes heartbeat-flow { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -200; } }
@@ -31,6 +33,54 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+        }
+        /* Markdown content styles */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content p {
+            margin: 0.5em 0;
+        }
+        .markdown-content strong {
+            color: #e4e4e7;
+            font-weight: 600;
+        }
+        .markdown-content ol, .markdown-content ul {
+            margin: 0.5em 0;
+            padding-left: 1.5em;
+        }
+        .markdown-content li {
+            margin: 0.3em 0;
+        }
+        .markdown-content code {
+            background: rgba(0,0,0,0.3);
+            padding: 0.1em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .markdown-content pre {
+            background: rgba(0,0,0,0.3);
+            padding: 0.8em;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 0.5em 0;
+        }
+        .markdown-content pre code {
+            background: none;
+            padding: 0;
+        }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            color: #fff;
+            margin: 0.8em 0 0.4em 0;
+        }
+        .markdown-content h1 { font-size: 1.4em; }
+        .markdown-content h2 { font-size: 1.2em; }
+        .markdown-content h3 { font-size: 1.1em; }
+        .markdown-content blockquote {
+            border-left: 3px solid #71717a;
+            padding-left: 1em;
+            margin: 0.5em 0;
+            color: #a1a1aa;
         }
     </style>
 </head>
@@ -108,6 +158,12 @@
         const cardsContainer = document.getElementById('cardsContainer');
         let isOpen = false;
 
+        // Configure marked options
+        marked.setOptions({
+            breaks: true,      // Convert \n to <br>
+            gfm: true          // GitHub Flavored Markdown
+        });
+
         // 存储 sessionId，用于保持对话记忆
         let currentSessionId = localStorage.getItem('medical_session_id') || '';
 
@@ -132,6 +188,16 @@
             }, 200);
         }
 
+        // Render markdown content safely
+        function renderMarkdown(text) {
+            // First escape HTML to prevent XSS, then parse markdown
+            const div = document.createElement('div');
+            div.textContent = text;
+            const escaped = div.innerHTML;
+            // Parse markdown (already escaped, so safe)
+            return marked.parse(escaped);
+        }
+
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
@@ -149,8 +215,8 @@
             chatMessages.innerHTML += `<div class="flex justify-start"><div id="${loadingId}" class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><p class="text-sm text-zinc-300">嘎嘎思考中...</p></div></div>`;
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
-            // 调用后端 API，使用存储的 sessionId
-            fetch('http://localhost:8002/api/medical/chat', {
+            // 调用后端 API (RAG增强版)，使用存储的 sessionId
+            fetch('http://localhost:8002/api/medical/chat/rag', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -170,9 +236,10 @@
                 // 删除 loading 消息
                 document.getElementById(loadingId)?.remove();
 
-                // 显示 AI 回复
+                // 显示 AI 回复 (Markdown rendered)
                 const replyText = data.reply || '抱歉，我还没学会回答这个问题。';
-                chatMessages.innerHTML += `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><p class="text-sm text-zinc-300">${escapeHtml(replyText)}</p></div></div>`;
+                const renderedReply = renderMarkdown(replyText);
+                chatMessages.innerHTML += `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><div class="text-sm text-zinc-300 markdown-content">${renderedReply}</div></div></div>`;
 
                 // 处理紧急提示
                 if (data.emergency) {

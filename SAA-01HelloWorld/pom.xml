@@ -66,13 +66,20 @@
         <dependency>
             <groupId>io.milvus</groupId>
             <artifactId>milvus-sdk-java</artifactId>
-            <version>2.6.15</version> <!-- 请根据需要选择最新版本 -->
+            <version>2.5.4</version>
         </dependency>
 
-        <!-- 缺少的依赖 -->
+        <!-- Missing dependencies -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- PDF parsing -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>2.0.29</version>
         </dependency>
     </dependencies>
 

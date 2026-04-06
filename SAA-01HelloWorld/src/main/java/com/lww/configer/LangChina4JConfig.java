@@ -3,6 +3,8 @@ package com.lww.configer;
 import com.lww.controller.AgentController;
 import com.lww.kb.KnowledgeBaseService;
 import com.lww.medical.tools.MedicalTools;
+import com.lww.service.MilvusEmbeddingStore;
+import com.lww.service.RagService;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -20,9 +22,6 @@ import java.time.Instant;
 @Configuration
 public class LangChina4JConfig {
 
-    /**
-     * 复用你现有的 Spring AI 配置：application.yml 里的 `spring.ai.zhipuai.api-key`
-     */
     @Value("${spring.ai.zhipuai.api-key}")
     private String zhipuApiKey;
 
@@ -30,7 +29,6 @@ public class LangChina4JConfig {
 
     @Bean
     public ChatLanguageModel dashscopeChatLanguageModel() {
-        // 使用智谱 GLM 模型
         return dev.langchain4j.model.zhipu.ZhipuAiChatModel.builder()
                 .apiKey(zhipuApiKey)
                 .model("glm-4-flash")
@@ -43,7 +41,6 @@ public class LangChina4JConfig {
 
     @Bean
     public EmbeddingModel kbEmbeddingModel() {
-        // 使用智谱 embedding 模型
         return dev.langchain4j.model.zhipu.ZhipuAiEmbeddingModel.builder()
                 .apiKey(zhipuApiKey)
                 .connectTimeout(timeout)
@@ -54,8 +51,13 @@ public class LangChina4JConfig {
     }
 
     @Bean
-    public MedicalTools medicalTools(KnowledgeBaseService knowledgeBaseService) {
-        return new MedicalTools(knowledgeBaseService);
+    public RagService ragService(EmbeddingModel kbEmbeddingModel, MilvusEmbeddingStore milvusEmbeddingStore) {
+        return new RagService(kbEmbeddingModel, milvusEmbeddingStore);
+    }
+
+    @Bean
+    public MedicalTools medicalTools(RagService ragService) {
+        return new MedicalTools(ragService);
     }
 
     @Bean
@@ -65,58 +67,82 @@ public class LangChina4JConfig {
 
     @Bean
     public AgentController.AgentAssistant agentAssistant(ChatLanguageModel dashscopeChatLanguageModel,
-                                                          KnowledgeBaseService knowledgeBaseService) {
+                                                          RagService ragService) {
         return AiServices.builder(AgentController.AgentAssistant.class)
                 .chatLanguageModel(dashscopeChatLanguageModel)
-                .tools(new AgentTools(knowledgeBaseService))
+                .tools(new AgentTools(ragService))
                 .chatMemory(MessageWindowChatMemory.withMaxMessages(10))
                 .build();
     }
 
-    /**
-     * 让智能体具备“工具调用能力”：当用户问到实时信息（如当前时间）时，
-     * 模型会选择调用这些方法，把结果返回给模型再形成最终答复。
-     */
     static class AgentTools {
 
-        private final KnowledgeBaseService knowledgeBaseService;
+        private final RagService ragService;
 
-        AgentTools(KnowledgeBaseService knowledgeBaseService) {
-            this.knowledgeBaseService = knowledgeBaseService;
+        AgentTools(RagService ragService) {
+            this.ragService = ragService;
         }
 
-        @Tool("获取服务器当前时间（UTC，ISO-8601 格式）")
+        @Tool("Get current server time in UTC ISO-8601 format")
         public String nowUtcIso() {
             return Instant.now().toString();
         }
 
-        @Tool("把 UTC 时间毫秒时间戳转换为 ISO-8601 格式字符串")
-        public String epochMillisToUtcIso(@P("UTC epoch 毫秒时间戳") long epochMillis) {
+        @Tool("Convert UTC epoch milliseconds to ISO-8601 format string")
+        public String epochMillisToUtcIso(@P("UTC epoch milliseconds timestamp") long epochMillis) {
             return Instant.ofEpochMilli(epochMillis).toString();
         }
 
-        @Tool("写入知识库：参数 kbId(唯一id)、title(标题)、content(内容)。返回写入结果")
+        @Tool("Write to knowledge base: kbId(unique id), content, source. Returns write result")
         public String kb_put(@P("kbId") String kbId,
-                               @P("title") String title,
-                               @P("content") String content) {
-            return knowledgeBaseService.put(kbId, title, content);
+                             @P("content") String content,
+                             @P("source") String source) {
+            try {
+                String id = ragService.addDocument(kbId, content, source != null ? source : "user-input");
+                return "kb_put success: kbId=" + id;
+            } catch (Exception e) {
+                return "kb_put failed: " + e.getMessage();
+            }
         }
 
-        @Tool("读取知识库：参数 kbId。返回该条知识内容或未找到信息")
-        public String kb_get(@P("kbId") String kbId) {
-            return knowledgeBaseService.get(kbId);
-        }
-
-        @Tool("搜索知识库：参数 query(查询语句)、topK(返回条数)。返回最相关的知识片段")
+        @Tool("Search knowledge base: query, topK(number of results). Returns most relevant knowledge")
         public String kb_search(@P("query") String query,
-                                  @P("topK") Integer topK) {
-            return knowledgeBaseService.search(query, topK == null ? 5 : topK);
+                                @P("topK") Integer topK) {
+            try {
+                var results = ragService.search(query, topK == null ? 5 : topK, 0.3);
+                if (results.isEmpty()) {
+                    return "kb_search no results";
+                }
+                StringBuilder sb = new StringBuilder("kb_search results:\n");
+                int idx = 1;
+                for (var r : results) {
+                    sb.append(idx++).append(". [score=").append(String.format("%.4f", r.getScore()))
+                      .append("] ").append(r.getContent());
+                    if (r.getSource() != null && !r.getSource().isEmpty()) {
+                        sb.append(" (source: ").append(r.getSource()).append(")");
+                    }
+                    sb.append("\n");
+                }
+                return sb.toString();
+            } catch (Exception e) {
+                return "kb_search error: " + e.getMessage();
+            }
         }
 
-        @Tool("HTTP GET 请求并返回响应正文（最多返回 10000 字符）。仅用于调用你可信的业务接口。")
+        @Tool("Get knowledge base statistics: total document count")
+        public String kb_stats() {
+            try {
+                long count = ragService.getDocumentCount();
+                return "Knowledge base document count: " + count;
+            } catch (Exception e) {
+                return "Failed to get statistics: " + e.getMessage();
+            }
+        }
+
+        @Tool("HTTP GET request returning response body (max 10000 chars). Only for trusted endpoints.")
         public String http_get(@P("url") String url) {
             if (url == null || url.trim().isEmpty()) {
-                return "http_get 失败：url 不能为空";
+                return "http_get failed: url cannot be empty";
             }
             String target = url.trim();
 
@@ -137,7 +163,7 @@ public class LangChina4JConfig {
 
                 return "http_get status=" + response.statusCode() + ", body=" + body;
             } catch (Exception e) {
-                return "http_get 出错：" + e.getMessage();
+                return "http_get error: " + e.getMessage();
             }
         }
     }

@@ -1,39 +1,76 @@
 package com.lww.medical.tools;
 
-import com.lww.kb.KnowledgeBaseService;
+import com.lww.service.RagService;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import java.util.*;
 
 /**
- * 医疗专业工具集
+ * Medical professional tools
+ * Integrated with RAG service for medical knowledge retrieval from Milvus
  */
 public class MedicalTools {
 
-    private final KnowledgeBaseService knowledgeBaseService;
+    private final RagService ragService;
 
-    public MedicalTools(KnowledgeBaseService knowledgeBaseService) {
-        this.knowledgeBaseService = knowledgeBaseService;
+    public MedicalTools(RagService ragService) {
+        this.ragService = ragService;
     }
 
-    @Tool("症状评估：输入症状描述，返回可能疾病和紧急程度评分(1-10)")
-    public String assessSymptoms(@P("症状描述") String symptoms) {
+    @Tool("Symptom assessment: input symptom description, return possible diseases and urgency score (1-10), retrieve related info from knowledge base")
+    public String assessSymptoms(@P("Symptom description") String symptoms) {
         int urgency = calculateUrgency(symptoms);
-        String possibleDiseases = knowledgeBaseService.search(symptoms, 3);
-        return String.format("紧急程度: %d/10\n可能相关疾病:\n%s", urgency, possibleDiseases);
+
+        StringBuilder knowledgeContext = new StringBuilder();
+        try {
+            var results = ragService.search(symptoms, 3, 0.3);
+            if (!results.isEmpty()) {
+                knowledgeContext.append("\n[Knowledge Base Reference]\n");
+                for (var r : results) {
+                    knowledgeContext.append("- ").append(r.getContent()).append("\n");
+                }
+            }
+        } catch (Exception e) {
+            knowledgeContext.append("\n(Knowledge base search failed: ").append(e.getMessage()).append(")");
+        }
+
+        return String.format("Urgency: %d/10\nPlease consult doctor for possible conditions%s", urgency, knowledgeContext);
     }
 
-    @Tool("科室推荐：根据症状推荐就诊科室")
-    public String recommendDepartment(@P("症状") String symptoms) {
-        if (symptoms.contains("胸痛") || symptoms.contains("心悸")) return "推荐科室: 心内科";
-        if (symptoms.contains("头晕") || symptoms.contains("麻木")) return "推荐科室: 神经内科";
-        if (symptoms.contains("外伤") || symptoms.contains("骨折")) return "推荐科室: 外科";
-        return "推荐科室: 内科";
+    @Tool("Department recommendation: recommend medical department based on symptoms")
+    public String recommendDepartment(@P("Symptoms") String symptoms) {
+        if (symptoms.contains("chest pain") || symptoms.contains("heart")) return "Recommended: Cardiology";
+        if (symptoms.contains("dizziness") || symptoms.contains("numbness")) return "Recommended: Neurology";
+        if (symptoms.contains("injury") || symptoms.contains("fracture")) return "Recommended: Surgery";
+        if (symptoms.contains("stomach") || symptoms.contains("digestion")) return "Recommended: Gastroenterology";
+        if (symptoms.contains("cough") || symptoms.contains("fever")) return "Recommended: Respiratory Medicine";
+        return "Recommended: Internal Medicine";
+    }
+
+    @Tool("Medical knowledge search: retrieve medical health knowledge from knowledge base")
+    public String searchMedicalKnowledge(@P("Query content") String query, @P("Number of results") Integer topK) {
+        try {
+            var results = ragService.search(query, topK == null ? 5 : topK, 0.3);
+            if (results.isEmpty()) {
+                return "No relevant medical knowledge found, please consult a doctor.";
+            }
+            StringBuilder sb = new StringBuilder("[Medical Knowledge Base Results]\n");
+            int idx = 1;
+            for (var r : results) {
+                sb.append(idx++).append(". ").append(r.getContent()).append("\n");
+            }
+            sb.append("\nNote: The above is for reference only, please follow doctor's advice for medication and treatment.");
+            return sb.toString();
+        } catch (Exception e) {
+            return "Knowledge base search error: " + e.getMessage();
+        }
     }
 
     private int calculateUrgency(String symptoms) {
-        if (symptoms.contains("胸痛") || symptoms.contains("呼吸困难")) return 9;
-        if (symptoms.contains("发热") && symptoms.contains("咳嗽")) return 6;
+        if (symptoms.contains("chest pain") || symptoms.contains("breathing difficulty")) return 9;
+        if (symptoms.contains("bleeding") || symptoms.contains("unconscious")) return 10;
+        if (symptoms.contains("fever") && symptoms.contains("cough")) return 6;
+        if (symptoms.contains("dizziness") || symptoms.contains("fatigue")) return 4;
         return 3;
     }
 }

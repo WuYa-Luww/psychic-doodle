@@ -1,8 +1,7 @@
 package com.lww.service;
 
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextExtractor;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -14,7 +13,7 @@ import java.util.List;
 public class PdfParseService {
 
     /**
-     * 从文件路径解析 PDF 内容并切片
+     * Parse PDF content from file path and chunk it
      */
     public List<String> parsePdfToStrings(String filePath) throws IOException {
         File pdfFile = new File(filePath);
@@ -22,28 +21,24 @@ public class PdfParseService {
             throw new IOException("PDF file not found: " + filePath);
         }
 
-        PDDocument document = null;
-        try {
-            document = Loader.loadPDF(pdfFile);
-            PDFTextExtractor textExtractor = new PDFTextExtractor(document);
+        try (PDDocument document = PDDocument.load(pdfFile)) {
+            PDFTextStripper stripper = new PDFTextStripper();
             StringBuilder fullText = new StringBuilder();
 
-            // 提取所有页面文本
-            for (int page = 0; page < document.getNumberOfPages(); page++) {
-                String pageText = textExtractor.getTextFromPage(page);
+            // Extract text from all pages
+            for (int page = 1; page <= document.getNumberOfPages(); page++) {
+                stripper.setStartPage(page);
+                stripper.setEndPage(page);
+                String pageText = stripper.getText(document);
                 fullText.append(pageText).append("\n");
             }
 
-            return chunkText(fullText.toString(), 500, 100); // 每片 500 字，重叠 100 字
-        } finally {
-            if (document != null) {
-                document.close();
-            }
+            return chunkText(fullText.toString(), 500, 100);
         }
     }
 
     /**
-     * 文本切片：按字符数切割，保留重叠
+     * Chunk text: split by character count with overlap
      */
     private List<String> chunkText(String text, int chunkSize, int overlap) {
         List<String> chunks = new ArrayList<>();
@@ -54,14 +49,12 @@ public class PdfParseService {
             int end = Math.min(start + chunkSize, cleanedText.length());
             String chunk = cleanedText.substring(start, end);
 
-            // 尽量在句号处切断
+            // Try to break at sentence end
             if (end < cleanedText.length()) {
-                int lastPeriod = chunk.lastIndexOf(".");
-                int lastEnPeriod = chunk.lastIndexOf(".");
-                int bestBreak = Math.max(lastPeriod, lastEnPeriod);
-                if (bestBreak > chunkSize / 2) {
-                    chunk = chunk.substring(0, bestBreak + 1);
-                    end = start + bestBreak + 1;
+                int lastPeriod = Math.max(chunk.lastIndexOf("."), chunk.lastIndexOf("。"));
+                if (lastPeriod > chunkSize / 2) {
+                    chunk = chunk.substring(0, lastPeriod + 1);
+                    end = start + lastPeriod + 1;
                 }
             }
 

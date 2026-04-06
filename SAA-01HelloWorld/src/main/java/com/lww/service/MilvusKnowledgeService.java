@@ -1,76 +1,102 @@
 package com.lww.service;
 
-import io.milvus.client.MilvusClient;
-import io.milvus.v2.common.ConsistencyLevel;
-import io.milvus.grpc.DataType;
-import io.milvus.param.ConnectParam;
-import io.milvus.param.dml.InsertParam;
+import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.service.vector.request.InsertReq;
+import io.milvus.v2.service.vector.request.SearchReq;
+import io.milvus.v2.service.vector.request.data.FloatVec;
+import io.milvus.v2.service.vector.response.SearchResp;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+/**
+ * Milvus Knowledge Service using V2 API
+ */
 @Service
 public class MilvusKnowledgeService {
 
-    private final MilvusClient milvusClient;
+    private final MilvusClientV2 milvusClient;
+    private final String collectionName;
 
-    public MilvusKnowledgeService(@Qualifier("milvusClient") MilvusClient milvusClient) {
+    public MilvusKnowledgeService(@Qualifier("milvusClientV2") MilvusClientV2 milvusClient,
+                                   @Qualifier("milvusCollectionName") String collectionName) {
         this.milvusClient = milvusClient;
+        this.collectionName = collectionName;
     }
 
     /**
-     * 插入文档切片到向量库
+     * Insert document chunk to vector store
      */
     public void insertDocument(String id, float[] vector, String content, String source) {
-        List<Map<String, Object>> rows = new ArrayList<>();
-        Map<String, Object> row = new HashMap<>();
-        row.put("id", id);
-        row.put("vector", vector);
-        row.put("content", content);
-        row.put("source", source);
-        rows.add(row);
+        // Build JsonObject for insertion (Milvus V2 SDK requires JsonObject)
+        JsonObject data = new JsonObject();
+        data.addProperty("id", id);
 
-        InsertParam param = InsertParam.newBuilder()
-                .withCollectionName("medical_kb")
-                .addFieldValues(rows)
+        JsonArray vectorArray = new JsonArray();
+        for (float v : vector) {
+            vectorArray.add(v);
+        }
+        data.add("vector", vectorArray);
+
+        data.addProperty("content", content);
+        data.addProperty("source", source);
+
+        List<JsonObject> dataList = new ArrayList<>();
+        dataList.add(data);
+
+        InsertReq insertReq = InsertReq.builder()
+                .collectionName(collectionName)
+                .data(dataList)
                 .build();
 
-        milvusClient.insert(param);
+        milvusClient.insert(insertReq);
     }
 
     /**
-     * 搜索相似内容
+     * Search similar content
      */
     public List<SearchResult> search(float[] queryVector, int topK, double minScore) {
-        io.milvus.param.query.SearchParam searchParam = io.milvus.param.query.SearchParam.builder()
-                .withCollectionName("medical_kb")
-                .withAnnFields(Collections.singletonList("vector"))
-                .withTopK(topK)
-                .withMetricType(io.milvus.common.enums.MetricType.IP.name())
-                .withConsistencyLevel(ConsistencyLevel.Session)
-                .withVectors(Collections.singletonList(queryVector))
-                .withVectorFieldName("vector")
-                .withOutputFields(Arrays.asList("id", "content", "source"))
+        List<Float> vectorList = new ArrayList<>(queryVector.length);
+        for (float v : queryVector) {
+            vectorList.add(v);
+        }
+
+        FloatVec floatVec = new FloatVec(vectorList);
+
+        SearchReq searchReq = SearchReq.builder()
+                .collectionName(collectionName)
+                .data(Collections.singletonList(floatVec))
+                .topK(topK)
+                .outputFields(Arrays.asList("id", "content", "source"))
                 .build();
 
-        var results = milvusClient.search(searchParam);
+        SearchResp searchResp = milvusClient.search(searchReq);
 
         List<SearchResult> searchResults = new ArrayList<>();
-        if (!results.isEmpty()) {
-            var resultArray = results.get(0).getResult();
-            for (var entity : resultArray) {
-                Double score = (Double) entity.get("score");
+        List<List<SearchResp.SearchResult>> results = searchResp.getSearchResults();
+
+        if (results != null && !results.isEmpty()) {
+            for (SearchResp.SearchResult result : results.get(0)) {
+                double score = result.getScore();
                 if (score >= minScore) {
                     SearchResult sr = new SearchResult();
-                    sr.setId((String) entity.get("id"));
-                    sr.setContent((String) entity.get("content"));
-                    sr.setSource((String) entity.get("source"));
+                    sr.setId(result.getId().toString());
                     sr.setScore(score);
+
+                    Map<String, Object> entity = result.getEntity();
+                    if (entity != null) {
+                        sr.setContent(entity.get("content") != null ? entity.get("content").toString() : "");
+                        sr.setSource(entity.get("source") != null ? entity.get("source").toString() : "");
+                    }
+
                     searchResults.add(sr);
                 }
             }
         }
+
         return searchResults;
     }
 
