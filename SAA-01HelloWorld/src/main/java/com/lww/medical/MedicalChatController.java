@@ -1,5 +1,6 @@
 package com.lww.medical;
 
+import com.lww.mcp.McpToolService;
 import com.lww.medical.context.HybridContextManager;
 import com.lww.medical.dto.*;
 import com.lww.medical.session.*;
@@ -12,6 +13,8 @@ import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -19,11 +22,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 医疗对话控制器
- * 集成 RAG 知识库，提供智能医疗问答服务
+ * 集成 RAG 知识库和 MCP 工具，提供智能医疗问答服务
  */
 @RestController
 @RequestMapping("/api/medical")
 public class MedicalChatController {
+
+    private static final Logger log = LoggerFactory.getLogger(MedicalChatController.class);
 
     private final SessionManager sessionManager;
     private final HybridContextManager contextManager;
@@ -31,6 +36,7 @@ public class MedicalChatController {
     private final ChatLanguageModel chatModel;
     private final MedicalTools medicalTools;
     private final RagService ragService;
+    private final McpToolService mcpToolService;
 
     // 每个会话独立的助手实例（带独立记忆）
     private final Map<String, MedicalAssistant> assistantMap = new ConcurrentHashMap<>();
@@ -40,18 +46,21 @@ public class MedicalChatController {
                                  SafetyGuard safetyGuard,
                                  ChatLanguageModel chatModel,
                                  MedicalTools medicalTools,
-                                 RagService ragService) {
+                                 RagService ragService,
+                                 McpToolService mcpToolService) {
         this.sessionManager = sessionManager;
         this.contextManager = contextManager;
         this.safetyGuard = safetyGuard;
         this.chatModel = chatModel;
         this.medicalTools = medicalTools;
         this.ragService = ragService;
+        this.mcpToolService = mcpToolService;
     }
 
     @PostMapping("/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) {
         ChatResponse response = new ChatResponse();
+        long startTime = System.currentTimeMillis();
 
         // 1. 获取或创建会话
         String sessionId = request.getSessionId();
@@ -61,23 +70,28 @@ public class MedicalChatController {
         }
         response.setSessionId(sessionId);
 
-        // 2. 安全检查
-        if (safetyGuard.detectEmergency(request.getMessage())) {
-            response.setEmergency(true);
-            response.setReply(safetyGuard.getEmergencyAlert());
-            return response;
-        }
+        // 2. 检测是否为紧急情况（但不拦截，只标记）
+        boolean isEmergency = safetyGuard.detectEmergency(request.getMessage());
+        response.setEmergency(isEmergency);
 
         // 3. 从 Milvus 知识库检索相关内容 (RAG增强)
         String ragContext = "";
         try {
             ragContext = ragService.buildContext(request.getMessage(), 3);
         } catch (Exception e) {
-            // RAG 检索失败不影响主流程
+            log.debug("RAG retrieval failed: {}", e.getMessage());
             ragContext = "";
         }
 
-        // 4. 获取或创建该会话的助手（带独立记忆）
+        // 4. 检索用户历史健康记忆 (MCP Memory)
+        String memoryContext = "";
+        try {
+            memoryContext = mcpToolService.retrieveMemory(sessionId, request.getMessage());
+        } catch (Exception e) {
+            log.debug("Memory retrieval failed: {}", e.getMessage());
+        }
+
+        // 5. 获取或创建该会话的助手（带独立记忆）
         MedicalAssistant assistant = assistantMap.computeIfAbsent(sessionId, id -> {
             ChatMemory chatMemory = MessageWindowChatMemory.withMaxMessages(20);
             return AiServices.builder(MedicalAssistant.class)
@@ -87,20 +101,53 @@ public class MedicalChatController {
                     .build();
         });
 
-        // 5. 如果有 RAG 上下文，拼接到消息中
-        String enhancedMessage = request.getMessage();
-        if (!ragContext.isEmpty()) {
-            enhancedMessage = ragContext + "\n用户问题：" + request.getMessage();
-        }
+        // 6. 构建增强消息（RAG + Memory）
+        String enhancedMessage = buildEnhancedMessage(request.getMessage(), ragContext, memoryContext);
 
-        // 6. 调用 AI 生成回复
+        // 7. 调用 AI 生成回复
         String reply = assistant.chat(enhancedMessage);
 
-        // 7. 内容过滤
+        // 8. 内容过滤
         reply = safetyGuard.filterResponse(reply);
 
+        // 9. 如果是紧急情况，在回答后追加紧急提醒
+        if (isEmergency) {
+            reply = reply + "\n\n" + safetyGuard.getEmergencyAlert();
+        }
+
+        // 10. 存储对话记忆到 MCP Memory
+        try {
+            mcpToolService.storeMemory(sessionId, request.getMessage(), "user");
+            mcpToolService.storeMemory(sessionId, reply, "assistant");
+        } catch (Exception e) {
+            log.debug("Memory storage failed: {}", e.getMessage());
+        }
+
         response.setReply(reply);
+
+        log.info("Chat processed in {}ms, sessionId: {}, emergency: {}",
+                System.currentTimeMillis() - startTime, sessionId, isEmergency);
+
         return response;
+    }
+
+    /**
+     * 构建增强消息
+     */
+    private String buildEnhancedMessage(String userMessage, String ragContext, String memoryContext) {
+        StringBuilder sb = new StringBuilder();
+
+        if (!memoryContext.isEmpty()) {
+            sb.append("【用户历史健康信息】\n").append(memoryContext).append("\n\n");
+        }
+
+        if (!ragContext.isEmpty()) {
+            sb.append("【知识库参考】\n").append(ragContext).append("\n\n");
+        }
+
+        sb.append("用户问题：").append(userMessage);
+
+        return sb.toString();
     }
 
     /**
@@ -119,12 +166,9 @@ public class MedicalChatController {
         }
         response.setSessionId(sessionId);
 
-        // 2. 安全检查
-        if (safetyGuard.detectEmergency(request.getMessage())) {
-            response.setEmergency(true);
-            response.setReply(safetyGuard.getEmergencyAlert());
-            return response;
-        }
+        // 2. 检测是否为紧急情况（但不拦截，只标记）
+        boolean isEmergency = safetyGuard.detectEmergency(request.getMessage());
+        response.setEmergency(isEmergency);
 
         // 3. 从 Milvus 知识库检索相关内容
         String ragContext = "";
@@ -156,6 +200,11 @@ public class MedicalChatController {
 
         // 7. 内容过滤
         reply = safetyGuard.filterResponse(reply);
+
+        // 8. 如果是紧急情况，在回答后追加紧急提醒
+        if (isEmergency) {
+            reply = reply + "\n\n" + safetyGuard.getEmergencyAlert();
+        }
 
         response.setReply(reply);
         return response;

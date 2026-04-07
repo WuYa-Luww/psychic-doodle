@@ -2,13 +2,13 @@ package com.lww.configer;
 
 import com.lww.controller.AgentController;
 import com.lww.kb.KnowledgeBaseService;
-import com.lww.medical.tools.MedicalTools;
 import com.lww.service.MilvusEmbeddingStore;
 import com.lww.service.RagService;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.service.AiServices;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,11 +27,31 @@ public class LangChina4JConfig {
 
     private Duration timeout = Duration.ofSeconds(60);
 
+    /**
+     * 同步聊天模型 - 用于需要工具调用的同步场景
+     * 注意：glm-4-flash 不支持函数调用，使用 glm-4 支持工具调用
+     */
     @Bean
     public ChatLanguageModel dashscopeChatLanguageModel() {
         return dev.langchain4j.model.zhipu.ZhipuAiChatModel.builder()
                 .apiKey(zhipuApiKey)
-                .model("glm-4-flash")
+                .model("glm-4")  // glm-4 支持函数调用，glm-4-flash 不支持
+                .connectTimeout(timeout)
+                .readTimeout(timeout)
+                .writeTimeout(timeout)
+                .callTimeout(timeout)
+                .build();
+    }
+
+    /**
+     * 流式聊天模型 - 用于 SSE 流式输出
+     * 注意：glm-4-flash 不支持函数调用，使用 glm-4 支持工具调用
+     */
+    @Bean
+    public StreamingChatLanguageModel streamingChatLanguageModel() {
+        return dev.langchain4j.model.zhipu.ZhipuAiStreamingChatModel.builder()
+                .apiKey(zhipuApiKey)
+                .model("glm-4")  // glm-4 支持函数调用，glm-4-flash 不支持
                 .connectTimeout(timeout)
                 .readTimeout(timeout)
                 .writeTimeout(timeout)
@@ -53,11 +73,6 @@ public class LangChina4JConfig {
     @Bean
     public RagService ragService(EmbeddingModel kbEmbeddingModel, MilvusEmbeddingStore milvusEmbeddingStore) {
         return new RagService(kbEmbeddingModel, milvusEmbeddingStore);
-    }
-
-    @Bean
-    public MedicalTools medicalTools(RagService ragService) {
-        return new MedicalTools(ragService);
     }
 
     @Bean

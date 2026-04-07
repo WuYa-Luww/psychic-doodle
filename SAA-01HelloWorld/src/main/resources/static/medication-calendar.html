@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用药日历 - 嘎嘎 AI 医疗助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+        .time-slot { transition: all 0.2s ease; }
+        .time-slot:hover { transform: scale(1.02); }
+        .modal-overlay { background: rgba(0,0,0,0.8); }
+    </style>
+</head>
+<body class="min-h-screen bg-[#050505] text-zinc-400 antialiased">
+    <!-- 紫色弥散光 -->
+    <div class="fixed top-0 right-0 w-[600px] h-[600px] pointer-events-none"
+         style="background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.1) 0%, transparent 70%);"></div>
+
+    <!-- 顶部导航栏 -->
+    <div class="fixed top-0 left-0 right-0 z-20 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+            <h1 class="text-lg font-semibold text-white tracking-wide">用药日历</h1>
+            <div class="flex items-center gap-4">
+                <button onclick="goBack()" class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                    </svg>
+                    返回
+                </button>
+                <button onclick="handleLogout()" class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all">
+                    退出登录
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="pt-20 pb-8 px-6">
+        <div class="max-w-6xl mx-auto">
+            <!-- 统计卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
+                    <div class="text-xs text-zinc-500 mb-1">今日待服</div>
+                    <div class="text-2xl font-semibold text-white" id="todayPending">0</div>
+                </div>
+                <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
+                    <div class="text-xs text-zinc-500 mb-1">今日已服</div>
+                    <div class="text-2xl font-semibold text-green-400" id="todayCompleted">0</div>
+                </div>
+                <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
+                    <div class="text-xs text-zinc-500 mb-1">本周提醒</div>
+                    <div class="text-2xl font-semibold text-purple-400" id="weekReminders">0</div>
+                </div>
+                <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
+                    <div class="text-xs text-zinc-500 mb-1">依从性</div>
+                    <div class="text-2xl font-semibold text-blue-400" id="complianceRate">--%</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 左侧：提醒计划 -->
+                <div class="lg:col-span-1">
+                    <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4 mb-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-base font-semibold text-white">提醒计划</h2>
+                            <button onclick="showAddModal()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition-colors">
+                                + 新增
+                            </button>
+                        </div>
+                        <div id="remindersList" class="space-y-3">
+                            <div class="text-center text-zinc-500 py-8">加载中...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：日历视图 -->
+                <div class="lg:col-span-2">
+                    <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <button onclick="changeMonth(-1)" class="p-2 hover:bg-zinc-800 rounded-lg transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                            </button>
+                            <h2 class="text-base font-semibold text-white" id="calendarTitle"></h2>
+                            <button onclick="changeMonth(1)" class="p-2 hover:bg-zinc-800 rounded-lg transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            </button>
+                        </div>
+                        <!-- 日历头部 -->
+                        <div class="calendar-grid mb-2">
+                            <div class="text-center text-xs text-zinc-500">日</div>
+                            <div class="text-center text-xs text-zinc-500">一</div>
+                            <div class="text-center text-xs text-zinc-500">二</div>
+                            <div class="text-center text-xs text-zinc-500">三</div>
+                            <div class="text-center text-xs text-zinc-500">四</div>
+                            <div class="text-center text-xs text-zinc-500">五</div>
+                            <div class="text-center text-xs text-zinc-500">六</div>
+                        </div>
+                        <!-- 日历日期 -->
+                        <div id="calendarDays" class="calendar-grid"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知弹窗 -->
+    <div id="notificationToast" class="fixed top-20 right-6 z-50 hidden">
+        <div class="bg-zinc-900 border border-purple-500/50 rounded-xl p-4 shadow-2xl max-w-sm animate-pulse">
+            <div class="flex items-start gap-3">
+                <div class="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    </svg>
+                </div>
+                <div class="flex-1">
+                    <h4 class="text-white font-medium">服药提醒</h4>
+                    <p id="notificationText" class="text-sm text-zinc-400 mt-1"></p>
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="confirmFromNotification()" class="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded-lg transition-colors">已服药</button>
+                        <button onclick="skipFromNotification()" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-sm rounded-lg transition-colors">跳过</button>
+                        <button onclick="closeNotification()" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg transition-colors">稍后</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加/编辑提醒弹窗 -->
+    <div id="reminderModal" class="modal-overlay fixed inset-0 z-50 hidden items-center justify-center">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 class="text-lg font-semibold text-white mb-4" id="modalTitle">新增提醒计划</h3>
+            <form id="reminderForm" onsubmit="handleSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-zinc-400 mb-1">药品名称</label>
+                    <input type="text" id="medicationName" required class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
+                </div>
+                <div>
+                    <label class="block text-sm text-zinc-400 mb-1">剂量</label>
+                    <input type="text" id="dosage" required class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600" placeholder="如：1 片/次">
+                </div>
+                <div>
+                    <label class="block text text-zinc-400 mb-1">提醒频率</label>
+                    <select id="frequency" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
+                        <option value="DAILY">每天</option>
+                        <option value="WEEKLY">每周</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-zinc-400 mb-1">提醒时间</label>
+                    <input type="time" id="remindTime" required class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
+                </div>
+                <div class="flex gap-3 pt-4">
+                    <button type="submit" class="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition-colors">保存</button>
+                    <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm rounded-lg hover:bg-zinc-700 transition-colors">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let currentReminders = [];
+        let currentMonth = new Date();
+        let editingId = null;
+        let pendingRecords = [];
+        let currentPendingId = null;
+        let pollingInterval = null;
+
+        // 检查登录状态
+        function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/login.html';
+            }
+        }
+        checkAuth();
+
+        // 退出登录
+        function handleLogout() {
+            localStorage.removeItem('token');
+            window.location.href = '/login.html';
+        }
+
+        // 返回上一页（类似 vue 的 go(-1)）
+        function goBack() {
+            if (window.history.length > 1 && document.referrer.includes(window.location.host)) {
+                window.history.back();
+            } else {
+                window.location.href = '/index.html';
+            }
+        }
+
+        // ==================== 轮询待服药提醒 ====================
+
+        function startPolling() {
+            // 立即检查一次
+            checkPendingReminders();
+            // 每30秒轮询一次
+            pollingInterval = setInterval(checkPendingReminders, 30000);
+        }
+
+        async function checkPendingReminders() {
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_BASE}/api/medication/pending`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    pendingRecords = data;
+                    if (data.length > 0) {
+                        showNotification(data[0]);
+                    }
+                    updateStats();
+                }
+            } catch (error) {
+                console.error('轮询失败:', error);
+            }
+        }
+
+        function showNotification(record) {
+            currentPendingId = record.id;
+            const time = record.scheduledTime ? record.scheduledTime.substring(11, 16) : '';
+            document.getElementById('notificationText').textContent =
+                `该服用 ${record.medicationName} ${record.dosage || ''} (${time})`;
+            document.getElementById('notificationToast').classList.remove('hidden');
+            // 播放提示音（可选）
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQsGgLXk5ZlJBwWApeLmmEYGB4Cg4eaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEY=');
+                audio.volume = 0.5;
+                audio.play().catch(() => {});
+            } catch (e) {}
+        }
+
+        function closeNotification() {
+            document.getElementById('notificationToast').classList.add('hidden');
+            currentPendingId = null;
+        }
+
+        async function confirmFromNotification() {
+            if (!currentPendingId) return;
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_BASE}/api/medication/records/${currentPendingId}/confirm`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    closeNotification();
+                    fetchReminders();
+                    checkPendingReminders();
+                }
+            } catch (error) {
+                alert('操作失败');
+            }
+        }
+
+        async function skipFromNotification() {
+            if (!currentPendingId) return;
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_BASE}/api/medication/records/${currentPendingId}/skip`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    closeNotification();
+                    fetchReminders();
+                    checkPendingReminders();
+                }
+            } catch (error) {
+                alert('操作失败');
+            }
+        }
+
+        // 获取提醒列表
+        async function fetchReminders() {
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_BASE}/api/medication/reminders`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    currentReminders = data;
+                    renderReminders();
+                    updateStats();
+                } else if (response.status === 401) {
+                    localStorage.removeItem('token');
+                    window.location.href = '/login.html';
+                } else {
+                    document.getElementById('remindersList').innerHTML = '<div class="text-center text-red-400 py-8">获取失败</div>';
+                }
+            } catch (error) {
+                document.getElementById('remindersList').innerHTML = '<div class="text-center text-red-400 py-8">网络错误</div>';
+            }
+        }
+
+        // 渲染提醒列表
+        function renderReminders() {
+            const container = document.getElementById('remindersList');
+            if (currentReminders.length === 0) {
+                container.innerHTML = '<div class="text-center text-zinc-500 py-8">暂无提醒计划</div>';
+                return;
+            }
+            container.innerHTML = currentReminders.map(r => `
+                <div class="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-white text-sm font-medium">${escapeHtml(r.medicationName)}</div>
+                            <div class="text-xs text-zinc-500 mt-1">${r.dosage} | ${r.frequency}</div>
+                            <div class="text-xs text-zinc-500 mt-0.5">${r.remindTimes?.[0] || ''}</div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="editReminder(${r.id})" class="p-1.5 hover:bg-zinc-700 rounded transition-colors">
+                                <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            </button>
+                            <button onclick="deleteReminder(${r.id})" class="p-1.5 hover:bg-red-900/50 rounded transition-colors">
+                                <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 更新统计数据
+        function updateStats() {
+            const pendingCount = pendingRecords ? pendingRecords.length : 0;
+            document.getElementById('todayPending').textContent = pendingCount;
+            document.getElementById('weekReminders').textContent = currentReminders.length;
+        }
+
+        // ==================== 提醒计划管理 ====================
+
+        // 显示添加弹窗
+        function showAddModal() {
+            editingId = null;
+            document.getElementById('modalTitle').textContent = '新增提醒计划';
+            document.getElementById('reminderForm').reset();
+            document.getElementById('reminderModal').classList.remove('hidden');
+        }
+
+        // 关闭弹窗
+        function closeModal() {
+            document.getElementById('reminderModal').classList.add('hidden');
+        }
+
+        // 编辑提醒
+        function editReminder(id) {
+            const reminder = currentReminders.find(r => r.id === id);
+            if (!reminder) return;
+            editingId = id;
+            document.getElementById('modalTitle').textContent = '编辑提醒计划';
+            document.getElementById('medicationName').value = reminder.medicationName;
+            document.getElementById('dosage').value = reminder.dosage;
+            document.getElementById('frequency').value = reminder.frequency;
+            document.getElementById('reminderModal').classList.remove('hidden');
+        }
+
+        // 提交表单
+        async function handleSubmit(e) {
+            e.preventDefault();
+            const token = localStorage.getItem('token');
+            const data = {
+                medicationName: document.getElementById('medicationName').value,
+                dosage: document.getElementById('dosage').value,
+                frequency: document.getElementById('frequency').value,
+                remindTimes: [document.getElementById('remindTime').value]
+            };
+
+            try {
+                const url = editingId ? `${API_BASE}/api/medication/reminders/${editingId}` : `${API_BASE}/api/medication/reminders`;
+                const method = editingId ? 'PUT' : 'POST';
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    fetchReminders();
+                    closeModal();
+                } else {
+                    alert('操作失败');
+                }
+            } catch (error) {
+                alert('网络错误');
+            }
+        }
+
+        // 删除提醒
+        async function deleteReminder(id) {
+            if (!confirm('确定删除此提醒计划？')) return;
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_BASE}/api/medication/reminders/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    fetchReminders();
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                alert('网络错误');
+            }
+        }
+
+        // 渲染日历
+        function renderCalendar() {
+            const year = currentMonth.getFullYear();
+            const month = currentMonth.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startDay = new Date(year, month, 1 - firstDay.getDay());
+
+            document.getElementById('calendarTitle').textContent = `${year}年${month + 1}月`;
+
+            const container = document.getElementById('calendarDays');
+            container.innerHTML = '';
+            const today = new Date();
+
+            for (let i = 0; i < 42; i++) {
+                const date = new Date(startDay);
+                date.setDate(date.getDate() + i);
+                const isCurrentMonth = date.getMonth() === month;
+                const isToday = date.toDateString() === today.toDateString();
+                const day = date.getDate();
+
+                const cell = document.createElement('div');
+                cell.className = `aspect-square rounded-lg p-1 text-center text-sm cursor-pointer transition-colors ${
+                    isToday ? 'bg-purple-600 text-white' :
+                    isCurrentMonth ? 'bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-800/20 text-zinc-600'
+                }`;
+                cell.textContent = day;
+                cell.onclick = () => showDayRecords(date);
+                container.appendChild(cell);
+            }
+        }
+
+        // 显示某天的服药记录
+        async function showDayRecords(date) {
+            const token = localStorage.getItem('token');
+            const dateStr = date.toISOString().split('T')[0];
+            const start = dateStr + 'T00:00:00';
+            const end = dateStr + 'T23:59:59';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/medication/calendar?start=${start}&end=${end}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const records = await response.json();
+                    showDayRecordsModal(date, records);
+                }
+            } catch (error) {
+                console.error('获取日历数据失败:', error);
+            }
+        }
+
+        // 显示某天记录弹窗
+        function showDayRecordsModal(date, records) {
+            const dateStr = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+
+            let html = `
+                <div class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" onclick="this.remove()">
+                    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4" onclick="event.stopPropagation()">
+                        <h3 class="text-lg font-semibold text-white mb-4">${dateStr} 服药记录</h3>
+                        <div class="space-y-3 max-h-80 overflow-y-auto">
+            `;
+
+            if (records.length === 0) {
+                html += `<div class="text-center text-zinc-500 py-8">暂无记录</div>`;
+            } else {
+                records.forEach(r => {
+                    const time = r.scheduledTime ? r.scheduledTime.substring(11, 16) : '';
+                    const statusColor = r.status === 'TAKEN' ? 'text-green-400' :
+                                       r.status === 'SKIPPED' ? 'text-yellow-400' :
+                                       r.status === 'MISSED' ? 'text-red-400' : 'text-zinc-400';
+                    const statusText = r.status === 'TAKEN' ? '已服' :
+                                      r.status === 'SKIPPED' ? '已跳过' :
+                                      r.status === 'MISSED' ? '漏服' : '待服';
+
+                    html += `
+                        <div class="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3 flex items-center justify-between">
+                            <div>
+                                <div class="text-white text-sm font-medium">${escapeHtml(r.medicationName)}</div>
+                                <div class="text-xs text-zinc-500 mt-1">${r.dosage || ''} | ${time} | <span class="${statusColor}">${statusText}</span></div>
+                            </div>
+                            ${r.status === 'PENDING' ? `
+                                <div class="flex gap-2">
+                                    <button onclick="confirmRecord(${r.id}, this)" class="px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded transition-colors">确认</button>
+                                    <button onclick="skipRecord(${r.id}, this)" class="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs rounded transition-colors">跳过</button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+            }
+
+            html += `
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="mt-4 w-full px-4 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm rounded-lg hover:bg-zinc-700 transition-colors">关闭</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        // 确认服药
+        async function confirmRecord(id, btn) {
+            const token = localStorage.getItem('token');
+            try {
+                btn.disabled = true;
+                btn.textContent = '处理中...';
+                const response = await fetch(`${API_BASE}/api/medication/records/${id}/confirm`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    btn.closest('.bg-zinc-800\\/50').innerHTML = '<span class="text-green-400">已确认服药</span>';
+                    updateStats();
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = '确认';
+                }
+            } catch (error) {
+                btn.disabled = false;
+                btn.textContent = '确认';
+            }
+        }
+
+        // 跳过服药
+        async function skipRecord(id, btn) {
+            const token = localStorage.getItem('token');
+            try {
+                btn.disabled = true;
+                btn.textContent = '处理中...';
+                const response = await fetch(`${API_BASE}/api/medication/records/${id}/skip`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    btn.closest('.bg-zinc-800\\/50').innerHTML = '<span class="text-yellow-400">已跳过</span>';
+                    updateStats();
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = '跳过';
+                }
+            } catch (error) {
+                btn.disabled = false;
+                btn.textContent = '跳过';
+            }
+        }
+
+        function changeMonth(delta) {
+            currentMonth.setMonth(currentMonth.getMonth() + delta);
+            renderCalendar();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        // 初始化
+        fetchReminders();
+        renderCalendar();
+        startPolling();
+    </script>
+</body>
+</html>

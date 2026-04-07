@@ -82,12 +82,49 @@
             margin: 0.5em 0;
             color: #a1a1aa;
         }
+        /* 流式输出光标动画 */
+        .streaming-cursor {
+            animation: blink 1s step-end infinite;
+            color: #a78bfa;
+            font-weight: bold;
+            margin-left: 2px;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        /* 通知弹窗动画 */
+        .notification-slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
     </style>
 </head>
 <body class="min-h-screen bg-[#050505] text-zinc-400 antialiased overflow-hidden">
     <!-- 紫色弥散光 -->
     <div class="fixed top-0 right-0 w-[600px] h-[600px] pointer-events-none"
          style="background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.1) 0%, transparent 70%);"></div>
+
+    <!-- 顶部导航栏 -->
+    <div class="fixed top-0 left-0 right-0 z-20 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+            <h1 class="text-lg font-semibold text-white tracking-wide">嘎嘎 AI 医疗助手</h1>
+            <div class="flex items-center gap-4">
+                <a href="/medication-calendar.html" class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    用药日历
+                </a>
+                <button onclick="handleLogout()" class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all">
+                    退出登录
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- 背景心率波形图 -->
     <div class="fixed inset-0 flex items-center justify-center pointer-events-none opacity-20">
@@ -125,7 +162,29 @@
 
     <!-- 右下角头像 - 医疗助手入口 -->
     <div class="bottom-right-avatar" title="点击与嘎嘎 AI 对话" onclick="openAI()">
-        <img src="/static/img.png" alt="嘎嘎 AI 助手">
+        <img src="/img.png" alt="嘎嘎 AI 助手">
+    </div>
+
+    <!-- 服药提醒通知 -->
+    <div id="medicationNotification" class="fixed top-20 right-6 z-50 hidden notification-slide-in">
+        <div class="bg-zinc-900 border border-purple-500/50 rounded-xl p-4 shadow-2xl max-w-sm">
+            <div class="flex items-start gap-3">
+                <div class="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    </svg>
+                </div>
+                <div class="flex-1">
+                    <h4 class="text-white font-medium">服药提醒</h4>
+                    <p id="notificationText" class="text-sm text-zinc-400 mt-1"></p>
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="confirmMedication()" class="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded-lg transition-colors">已服药</button>
+                        <button onclick="skipMedication()" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-sm rounded-lg transition-colors">跳过</button>
+                        <button onclick="closeMedicationNotification()" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg transition-colors">稍后</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- AI 交互层 -->
@@ -144,8 +203,7 @@
             </div>
             <div class="px-6 py-4 border-t border-zinc-800 flex gap-3">
                 <input type="text" id="messageInput" placeholder="请输入您的问题..."
-                    class="flex-1 px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                    onkeypress="if(event.key==='Enter')sendMessage()">
+                    class="flex-1 px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
                 <button onclick="sendMessage()" class="px-5 py-2.5 bg-zinc-100 text-zinc-900 font-medium rounded-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300">发送</button>
                 <button onclick="closeAI()" class="px-5 py-2.5 bg-zinc-800 text-zinc-300 font-medium rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all duration-300">返回</button>
             </div>
@@ -158,14 +216,95 @@
         const cardsContainer = document.getElementById('cardsContainer');
         let isOpen = false;
 
-        // Configure marked options
-        marked.setOptions({
-            breaks: true,      // Convert \n to <br>
-            gfm: true          // GitHub Flavored Markdown
-        });
+        marked.setOptions({ breaks: true, gfm: true });
 
-        // 存储 sessionId，用于保持对话记忆
         let currentSessionId = localStorage.getItem('medical_session_id') || '';
+        let pendingRecords = [];
+        let currentPendingId = null;
+        let pollingInterval = null;
+
+        // 启动轮询
+        function startPolling() {
+            checkPendingReminders();
+            pollingInterval = setInterval(checkPendingReminders, 30000);
+        }
+
+        // 检查待服药提醒
+        async function checkPendingReminders() {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            try {
+                const response = await fetch('/api/medication/pending', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    pendingRecords = data;
+                    if (data.length > 0) {
+                        showMedicationNotification(data[0]);
+                    }
+                }
+            } catch (error) {
+                console.error('轮询失败:', error);
+            }
+        }
+
+        // 显示通知
+        function showMedicationNotification(record) {
+            currentPendingId = record.id;
+            const time = record.scheduledTime ? record.scheduledTime.substring(11, 16) : '';
+            document.getElementById('notificationText').textContent =
+                `该服用 ${record.medicationName} ${record.dosage || ''} (${time})`;
+            document.getElementById('medicationNotification').classList.remove('hidden');
+            // 播放提示音
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQsGgLXk5ZlJBwWApeLmmEYGB4Cg4eaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEY=');
+                audio.volume = 0.5;
+                audio.play().catch(() => {});
+            } catch (e) {}
+        }
+
+        function closeMedicationNotification() {
+            document.getElementById('medicationNotification').classList.add('hidden');
+            currentPendingId = null;
+        }
+
+        async function confirmMedication() {
+            if (!currentPendingId) return;
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`/api/medication/records/${currentPendingId}/confirm`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    closeMedicationNotification();
+                    checkPendingReminders();
+                }
+            } catch (error) {
+                alert('操作失败');
+            }
+        }
+
+        async function skipMedication() {
+            if (!currentPendingId) return;
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`/api/medication/records/${currentPendingId}/skip`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    closeMedicationNotification();
+                    checkPendingReminders();
+                }
+            } catch (error) {
+                alert('操作失败');
+            }
+        }
+
+        // 启动轮询
+        startPolling();
 
         function openAI() {
             if (isOpen) return;
@@ -188,90 +327,166 @@
             }, 200);
         }
 
-        // Render markdown content safely
-        function renderMarkdown(text) {
-            // First escape HTML to prevent XSS, then parse markdown
-            const div = document.createElement('div');
-            div.textContent = text;
-            const escaped = div.innerHTML;
-            // Parse markdown (already escaped, so safe)
-            return marked.parse(escaped);
-        }
-
-        function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
-            if (!message) return;
-
-            const chatMessages = document.getElementById('chatMessages');
-
-            // 添加用户消息
-            chatMessages.innerHTML += `<div class="flex justify-end"><div class="max-w-[75%] px-4 py-3 bg-zinc-100 text-zinc-900 rounded-2xl rounded-br-md"><p class="text-sm">${escapeHtml(message)}</p></div></div>`;
-            input.value = '';
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-
-            // 添加 loading 状态
-            const loadingId = 'loading-' + Date.now();
-            chatMessages.innerHTML += `<div class="flex justify-start"><div id="${loadingId}" class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><p class="text-sm text-zinc-300">嘎嘎思考中...</p></div></div>`;
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-
-            // 调用后端 API (RAG增强版)，使用存储的 sessionId
-            fetch('http://localhost:8002/api/medical/chat/rag', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    patientId: 'user_001',
-                    sessionId: currentSessionId,
-                    message: message
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                // 首次请求时保存返回的 sessionId
-                if (!currentSessionId && data.sessionId) {
-                    currentSessionId = data.sessionId;
-                    localStorage.setItem('medical_session_id', currentSessionId);
-                }
-
-                // 删除 loading 消息
-                document.getElementById(loadingId)?.remove();
-
-                // 显示 AI 回复 (Markdown rendered)
-                const replyText = data.reply || '抱歉，我还没学会回答这个问题。';
-                const renderedReply = renderMarkdown(replyText);
-                chatMessages.innerHTML += `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><div class="text-sm text-zinc-300 markdown-content">${renderedReply}</div></div></div>`;
-
-                // 处理紧急提示
-                if (data.emergency) {
-                    chatMessages.innerHTML += `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-red-900/50 border border-red-700 rounded-2xl rounded-bl-md"><p class="text-sm text-red-200">⚠️ ${escapeHtml(data.emergencyMessage || '紧急情况请尽快就医')}</p></div></div>`;
-                }
-
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            })
-            .catch(error => {
-                // 删除 loading 消息
-                document.getElementById(loadingId)?.remove();
-
-                // 显示错误信息
-                chatMessages.innerHTML += `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><p class="text-sm text-red-400">请求失败：${error.message}</p></div></div>`;
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            });
-
-            // Focus input after sending message
-            document.getElementById('messageInput').focus();
-        }
-
-        // HTML 转义函数，防止 XSS
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
 
-        // Medical layer is now clickable to open AI directly
-        medicalLayer.addEventListener('click', function() {
-            openAI();
+        function renderMarkdown(text) {
+            // 先手动转义 HTML 特殊字符，保留换行符
+            let escaped = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            // 然后用 marked 解析 Markdown
+            return marked.parse(escaped);
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.insertAdjacentHTML('beforeend', `<div class="flex justify-end"><div class="max-w-[75%] px-4 py-3 bg-zinc-100 text-zinc-900 rounded-2xl rounded-br-md"><p class="text-sm">${escapeHtml(message)}</p></div></div>`);
+            input.value = '';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            const aiMsgId = 'ai-msg-' + Date.now();
+            chatMessages.insertAdjacentHTML('beforeend', `<div class="flex justify-start"><div id="${aiMsgId}" class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><div class="text-sm text-zinc-300 markdown-content"><span class="streaming-cursor">▊</span></div></div></div>`);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            let fullResponse = '';
+            const contentDiv = document.getElementById(aiMsgId).querySelector('.markdown-content');
+            const cursorEl = contentDiv.querySelector('.streaming-cursor');
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/stream/medical/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        sessionId: currentSessionId || ('medical_' + Date.now()),
+                        message: message
+                    })
+                });
+
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+
+                if (!currentSessionId) {
+                    currentSessionId = 'medical_' + Date.now();
+                    localStorage.setItem('medical_session_id', currentSessionId);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let isCompleted = false;
+                // 用于累积同一事件的多个 data 行（SSE 规范：换行符会拆分成多行 data）
+                let dataBuffer = [];
+
+                while (true) {
+                    const { done, value } = await reader.read();
+
+                    if (value) buffer += decoder.decode(value, { stream: true });
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    let currentEvent = 'message';
+
+                    for (const line of lines) {
+                        if (line.startsWith('event:')) {
+                            // 新事件开始，先处理之前累积的 data
+                            if (dataBuffer.length > 0) {
+                                processData(currentEvent, dataBuffer.join('\n'));
+                                dataBuffer = [];
+                            }
+                            currentEvent = line.substring(6).trim();
+                        } else if (line.startsWith('data:')) {
+                            // 累积 data 行（去掉 "data:" 前缀，保留一个前导空格的处理）
+                            let data = line.substring(5);
+                            if (data.startsWith(' ')) {
+                                data = data.substring(1);
+                            }
+                            dataBuffer.push(data);
+                        } else if (line === '') {
+                            // 空行表示事件结束，处理累积的 data
+                            if (dataBuffer.length > 0) {
+                                processData(currentEvent, dataBuffer.join('\n'));
+                                dataBuffer = [];
+                            }
+                            currentEvent = 'message';
+                        }
+                    }
+
+                    if (done || isCompleted) {
+                        // 处理剩余的 data
+                        if (dataBuffer.length > 0) {
+                            processData(currentEvent, dataBuffer.join('\n'));
+                        }
+                        if (!isCompleted) {
+                            cursorEl.remove();
+                            contentDiv.innerHTML = renderMarkdown(fullResponse);
+                        }
+                        break;
+                    }
+                }
+
+                function processData(event, data) {
+                    if (event === 'message') {
+                        fullResponse += data;
+                        contentDiv.textContent = fullResponse;
+                        contentDiv.appendChild(cursorEl);
+                    } else if (event === 'done') {
+                        isCompleted = true;
+                        cursorEl.remove();
+                        contentDiv.innerHTML = renderMarkdown(fullResponse);
+                    } else if (event === 'emergency') {
+                        chatMessages.insertAdjacentHTML('beforeend', `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-red-900/50 border border-red-700 rounded-2xl rounded-bl-md"><p class="text-sm text-red-200">⚠️ ${escapeHtml(data)}</p></div></div>`);
+                    } else if (event === 'emergency_append') {
+                        fullResponse += data;
+                        if (isCompleted) contentDiv.innerHTML = renderMarkdown(fullResponse);
+                    } else if (event === 'error') {
+                        cursorEl.remove();
+                        contentDiv.innerHTML = `<span class="text-red-400">错误: ${escapeHtml(data)}</span>`;
+                    }
+                }
+            } catch (error) {
+                cursorEl.remove();
+                contentDiv.innerHTML = `<span class="text-red-400">请求失败：${escapeHtml(error.message)}</span>`;
+            }
+
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            document.getElementById('messageInput').focus();
+        }
+
+        medicalLayer.addEventListener('click', openAI);
+
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
         });
+
+        // 检查登录状态
+        function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/login.html';
+            }
+        }
+        checkAuth();
+
+        // 退出登录
+        function handleLogout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('medical_session_id');
+            window.location.href = '/login.html';
+        }
     </script>
 </body>
 </html>
