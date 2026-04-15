@@ -34,6 +34,10 @@ public class PdfParseService {
             }
 
             return chunkText(fullText.toString(), 500, 100);
+        } catch (org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException e) {
+            throw new IOException("PDF 文件受密码保护，请先解除密码");
+        } catch (IOException e) {
+            throw new IOException("PDF 解析失败: " + e.getMessage(), e);
         }
     }
 

@@ -113,6 +113,12 @@
         <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
             <h1 class="text-lg font-semibold text-white tracking-wide">嘎嘎 AI 医疗助手</h1>
             <div class="flex items-center gap-4">
+                <button onclick="openPdfUpload()" class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    上传 PDF
+                </button>
                 <a href="/medication-calendar.html" class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
@@ -182,6 +188,51 @@
                         <button onclick="skipMedication()" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-sm rounded-lg transition-colors">跳过</button>
                         <button onclick="closeMedicationNotification()" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg transition-colors">稍后</button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF 上传模态框 -->
+    <div id="pdfUploadModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closePdfUpload()"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl">
+            <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-white">上传 PDF 文档</h3>
+                <button onclick="closePdfUpload()" class="text-zinc-400 hover:text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="p-6">
+                <div id="dropZone" class="border-2 border-dashed border-zinc-600 rounded-xl p-8 text-center hover:border-zinc-500 transition-colors cursor-pointer"
+                     onclick="document.getElementById('pdfFileInput').click()">
+                    <svg class="w-12 h-12 mx-auto text-zinc-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <p class="text-zinc-400 mb-1">拖拽 PDF 文件到此处，或点击选择</p>
+                    <p class="text-xs text-zinc-500">支持 PDF 格式，文档将自动切分存入知识库</p>
+                </div>
+                <input type="file" id="pdfFileInput" accept=".pdf" class="hidden" onchange="handleFileSelect(this.files[0])">
+                <p id="fileNameDisplay" class="mt-3 text-sm text-zinc-400 hidden"></p>
+                <div id="uploadProgress" class="mt-4 hidden">
+                    <div class="flex items-center gap-3">
+                        <div class="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                            <div id="progressBar" class="h-full bg-purple-500 transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <span id="progressText" class="text-xs text-zinc-400">0%</span>
+                    </div>
+                </div>
+                <div id="uploadResult" class="mt-4 hidden p-4 rounded-xl"></div>
+                <div class="mt-4 flex justify-center">
+                    <a href="/api/pdf/template" id="downloadTemplateBtn"
+                       class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        下载示例 PDF
+                    </a>
                 </div>
             </div>
         </div>
@@ -480,6 +531,109 @@
             }
         }
         checkAuth();
+
+        // PDF 上传相关
+        function openPdfUpload() {
+            document.getElementById('pdfUploadModal').classList.remove('hidden');
+            resetUploadState();
+        }
+
+        function closePdfUpload() {
+            document.getElementById('pdfUploadModal').classList.add('hidden');
+        }
+
+        function resetUploadState() {
+            document.getElementById('pdfFileInput').value = '';
+            document.getElementById('fileNameDisplay').classList.add('hidden');
+            document.getElementById('uploadProgress').classList.add('hidden');
+            document.getElementById('uploadResult').classList.add('hidden');
+        }
+
+        function handleFileSelect(file) {
+            if (!file) return;
+
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                showUploadResult(false, '仅支持 PDF 格式文件');
+                return;
+            }
+
+            document.getElementById('fileNameDisplay').textContent = '已选择: ' + file.name;
+            document.getElementById('fileNameDisplay').classList.remove('hidden');
+
+            uploadPdf(file);
+        }
+
+        async function uploadPdf(file) {
+            const progressDiv = document.getElementById('uploadProgress');
+            const resultDiv = document.getElementById('uploadResult');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+
+            progressDiv.classList.remove('hidden');
+            resultDiv.classList.add('hidden');
+
+            // 模拟进度
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress = Math.min(progress + Math.random() * 15, 90);
+                progressBar.style.width = progress + '%';
+                progressText.textContent = Math.round(progress) + '%';
+            }, 200);
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch('/api/pdf/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showUploadResult(true, '上传成功！文档已切分为 ' + result.totalChunks + ' 个片段存入知识库');
+                } else {
+                    showUploadResult(false, result.message || '上传失败');
+                }
+            } catch (error) {
+                clearInterval(progressInterval);
+                showUploadResult(false, '上传失败: ' + error.message);
+            }
+        }
+
+        function showUploadResult(success, message) {
+            const resultDiv = document.getElementById('uploadResult');
+            resultDiv.classList.remove('hidden', 'bg-green-900/30', 'bg-red-900/30');
+
+            if (success) {
+                resultDiv.classList.add('bg-green-900/30', 'border', 'border-green-700');
+                resultDiv.innerHTML = '<p class="text-green-400 text-sm flex items-center gap-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>' + message + '</p>';
+            } else {
+                resultDiv.classList.add('bg-red-900/30', 'border', 'border-red-700');
+                resultDiv.innerHTML = '<p class="text-red-400 text-sm flex items-center gap-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>' + message + '</p>';
+            }
+        }
+
+        // 拖拽上传
+        const dropZone = document.getElementById('dropZone');
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-purple-500', 'bg-purple-500/5');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-purple-500', 'bg-purple-500/5');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-purple-500', 'bg-purple-500/5');
+            const file = e.dataTransfer.files[0];
+            if (file) handleFileSelect(file);
+        });
 
         // 退出登录
         function handleLogout() {

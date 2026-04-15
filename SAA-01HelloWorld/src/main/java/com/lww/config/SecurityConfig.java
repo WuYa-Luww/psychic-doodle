@@ -64,6 +64,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/stream/**").permitAll()
                         .requestMatchers("/api/medical/**").permitAll()
+                        .requestMatchers("/api/pdf/**").permitAll()
                         .requestMatchers("/chat", "/agent", "/api/kb/**").permitAll()
                         // 静态资源
                         .requestMatchers("/", "/index.html", "/login.html", "/medication-calendar.html", "/digital-human.html").permitAll()

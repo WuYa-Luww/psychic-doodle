@@ -200,5 +200,53 @@ public class KnowledgeBaseService {
             this.updatedAt = updatedAt;
         }
     }
+
+    /**
+     * 结构化返回结果，避免字符串解析
+     */
+    public static class PutResult {
+        public final boolean success;
+        public final String kbId;
+        public final String errorMessage;
+
+        private PutResult(boolean success, String kbId, String errorMessage) {
+            this.success = success;
+            this.kbId = kbId;
+            this.errorMessage = errorMessage;
+        }
+
+        public static PutResult ok(String kbId) {
+            return new PutResult(true, kbId, null);
+        }
+
+        public static PutResult fail(String message) {
+            return new PutResult(false, null, message);
+        }
+    }
+
+    /**
+     * 结构化存储方法，返回包含成功状态和 ID 的结果对象
+     */
+    public PutResult putResult(String kbId, String title, String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return PutResult.fail("content 不能为空");
+        }
+
+        String id = (kbId == null || kbId.trim().isEmpty()) ? UUID.randomUUID().toString() : kbId.trim();
+        String t = title == null ? "" : title.trim();
+        String c = content.trim();
+
+        synchronized (lock) {
+            items.put(id, new KnowledgeItem(id, t, c, Instant.now().toString()));
+            try {
+                persistItems();
+                rebuildEmbeddingStoreAndPersist();
+            } catch (Exception e) {
+                return PutResult.fail("写入失败: " + e.getMessage());
+            }
+        }
+
+        return PutResult.ok(id);
+    }
 }
 
