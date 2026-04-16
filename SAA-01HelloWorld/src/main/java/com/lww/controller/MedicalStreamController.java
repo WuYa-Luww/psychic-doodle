@@ -2,6 +2,9 @@ package com.lww.controller;
 
 import com.lww.mcp.McpToolService;
 import com.lww.medical.SafetyGuard;
+import com.lww.medical.dto.SessionDetailDTO;
+import com.lww.medical.dto.SessionSummaryDTO;
+import com.lww.medical.service.RedisMemoryService;
 import com.lww.medical.tools.MedicalTools;
 import com.lww.service.RagService;
 import com.lww.user.entity.User;
@@ -41,6 +44,7 @@ public class MedicalStreamController {
     private final SafetyGuard safetyGuard;
     private final MedicalTools medicalTools;
     private final UserRepository userRepository;
+    private final RedisMemoryService redisMemoryService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     // 每个会话独立的助手实例（带独立记忆和工具）
@@ -82,13 +86,15 @@ public class MedicalStreamController {
             McpToolService mcpToolService,
             SafetyGuard safetyGuard,
             MedicalTools medicalTools,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            RedisMemoryService redisMemoryService) {
         this.streamingModel = streamingModel;
         this.ragService = ragService;
         this.mcpToolService = mcpToolService;
         this.safetyGuard = safetyGuard;
         this.medicalTools = medicalTools;
         this.userRepository = userRepository;
+        this.redisMemoryService = redisMemoryService;
     }
 
     /**
@@ -181,10 +187,10 @@ public class MedicalStreamController {
                         return;
                     }
                     try {
-                        // 发送 done 事件
+                        // 发送 done 事件（包含 sessionId 供前端保存）
                         emitter.send(SseEmitter.event()
                                 .name("done")
-                                .data(""));
+                                .data("{\"sessionId\":\"" + finalSessionId + "\"}"));
                         emitter.complete();
 
                         // 内容安全过滤
@@ -204,7 +210,19 @@ public class MedicalStreamController {
                             mcpToolService.storeMemory(finalSessionId, request.getMessage(), "user");
                             mcpToolService.storeMemory(finalSessionId, filteredResponse, "assistant");
                         } catch (Exception e) {
-                            log.debug("Memory storage failed: {}", e.getMessage());
+                            log.debug("MCP Memory storage failed: {}", e.getMessage());
+                        }
+
+                        // 存储到 Redis（用于前端历史对话查询）
+                        String userIdForRedis = "default_user";
+                        if (authentication != null && !"anonymousUser".equals(authentication.getName())) {
+                            userIdForRedis = authentication.getName();
+                        }
+                        try {
+                            redisMemoryService.saveMessage(finalSessionId, userIdForRedis, "user", request.getMessage());
+                            redisMemoryService.saveMessage(finalSessionId, userIdForRedis, "assistant", filteredResponse);
+                        } catch (Exception e) {
+                            log.debug("Redis Memory storage failed: {}", e.getMessage());
                         }
 
                         log.info("Medical stream completed, sessionId: {}, emergency: {}, length: {}",

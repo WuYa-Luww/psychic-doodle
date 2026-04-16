@@ -1,6 +1,5 @@
 package com.lww.service;
 
-import com.lww.kb.KnowledgeBaseService;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -13,7 +12,7 @@ import java.util.UUID;
 
 /**
  * PDF 上传处理服务
- * 整合 PDF 解析、文本切分、知识库存储
+ * 整合 PDF 解析、文本切分、知识库存储 (Milvus)
  */
 @Service
 public class PdfUploadService {
@@ -21,12 +20,12 @@ public class PdfUploadService {
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
     private final PdfParseService pdfParseService;
-    private final KnowledgeBaseService knowledgeBaseService;
+    private final RagService ragService;
 
     public PdfUploadService(PdfParseService pdfParseService,
-                            KnowledgeBaseService knowledgeBaseService) {
+                            RagService ragService) {
         this.pdfParseService = pdfParseService;
-        this.knowledgeBaseService = knowledgeBaseService;
+        this.ragService = ragService;
     }
 
     /**
@@ -82,22 +81,17 @@ public class PdfUploadService {
                 List<String> chunks = pdfParseService.parsePdfToStrings(tempFile.toString());
                 result.setTotalChunks(chunks.size());
 
-                // 4. 存入知识库 (使用结构化返回)
+                // 4. 存入 Milvus 向量数据库
                 List<String> kbIds = new ArrayList<>();
                 for (int i = 0; i < chunks.size(); i++) {
                     String chunk = chunks.get(i);
-                    KnowledgeBaseService.PutResult putResult = knowledgeBaseService.putResult(
-                            null,
-                            fileName + " (片段" + (i + 1) + ")",
-                            chunk
-                    );
-                    if (putResult.success) {
-                        kbIds.add(putResult.kbId);
-                    }
+                    // 使用 RagService 添加到 Milvus
+                    String kbId = ragService.addDocument(chunk, fileName);
+                    kbIds.add(kbId);
                 }
 
                 result.setSuccess(true);
-                result.setMessage("成功处理 PDF，共 " + chunks.size() + " 个片段，已存入知识库");
+                result.setMessage("成功处理 PDF，共 " + chunks.size() + " 个片段，已存入 Milvus 向量数据库");
                 result.setChunkIds(kbIds);
 
             } finally {

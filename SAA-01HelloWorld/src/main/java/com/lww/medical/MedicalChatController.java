@@ -3,6 +3,7 @@ package com.lww.medical;
 import com.lww.mcp.McpToolService;
 import com.lww.medical.context.HybridContextManager;
 import com.lww.medical.dto.*;
+import com.lww.medical.service.RedisMemoryService;
 import com.lww.medical.session.*;
 import com.lww.medical.tools.MedicalTools;
 import com.lww.service.RagService;
@@ -37,6 +38,7 @@ public class MedicalChatController {
     private final MedicalTools medicalTools;
     private final RagService ragService;
     private final McpToolService mcpToolService;
+    private final RedisMemoryService redisMemoryService;
 
     // 每个会话独立的助手实例（带独立记忆）
     private final Map<String, MedicalAssistant> assistantMap = new ConcurrentHashMap<>();
@@ -47,7 +49,8 @@ public class MedicalChatController {
                                  ChatLanguageModel chatModel,
                                  MedicalTools medicalTools,
                                  RagService ragService,
-                                 McpToolService mcpToolService) {
+                                 McpToolService mcpToolService,
+                                 RedisMemoryService redisMemoryService) {
         this.sessionManager = sessionManager;
         this.contextManager = contextManager;
         this.safetyGuard = safetyGuard;
@@ -55,6 +58,7 @@ public class MedicalChatController {
         this.medicalTools = medicalTools;
         this.ragService = ragService;
         this.mcpToolService = mcpToolService;
+        this.redisMemoryService = redisMemoryService;
     }
 
     @PostMapping("/chat")
@@ -121,6 +125,22 @@ public class MedicalChatController {
             mcpToolService.storeMemory(sessionId, reply, "assistant");
         } catch (Exception e) {
             log.debug("Memory storage failed: {}", e.getMessage());
+        }
+
+        // 11. 存储对话记忆到 Redis（异步同步 MCP）
+        String userId = request.getUserId() != null ? request.getUserId() : "default_user";
+        try {
+            // 保存用户消息
+            String userMsgId = redisMemoryService.saveMessage(sessionId, userId, "user", request.getMessage());
+            // 入队 MCP 同步
+            redisMemoryService.enqueueMcpSync(sessionId, userMsgId, "user", request.getMessage());
+
+            // 保存 AI 回复
+            String assistantMsgId = redisMemoryService.saveMessage(sessionId, userId, "assistant", reply);
+            // 入队 MCP 同步
+            redisMemoryService.enqueueMcpSync(sessionId, assistantMsgId, "assistant", reply);
+        } catch (Exception e) {
+            log.debug("Redis memory storage failed: {}", e.getMessage());
         }
 
         response.setReply(reply);

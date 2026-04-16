@@ -7,6 +7,7 @@
 [![LangChain4j](https://img.shields.io/badge/LangChain4j-0.36.2-blue.svg)](https://github.com/langchain4j/langchain4j)
 [![Milvus](https://img.shields.io/badge/Milvus-2.6.15-red.svg)](https://milvus.io/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-purple.svg)](https://modelcontextprotocol.io/)
+[![Redis](https://img.shields.io/badge/Redis-7.x-red.svg)](https://redis.io/)
 
 ---
 
@@ -17,9 +18,11 @@
 ### ✨ 核心特性
 
 - 🤖 **智能对话** - 基于智谱 GLM-4 大模型的自然语言交互
-- 📚 **知识库增强** - 支持 RAG（检索增强生成），结合向量数据库实现知识检索
+- 📚 **知识库增强** - 支持 RAG（检索增强生成），结合 Milvus 向量数据库实现知识检索
+- 📄 **PDF 文档解析** - 支持 PDF 文档上传、解析、切分、自动入库
 - 🛡️ **安全机制** - 紧急情况检测、内容过滤、免责声明
-- 💾 **会话管理** - 多会话独立记忆，上下文感知对话
+- 💾 **Redis 分层记忆** - 基于 Redis 的会话持久化与历史对话管理
+- 🔄 **MCP 异步同步** - 异步队列实现 MCP Memory 同步，支持失败重试
 - 🔧 **工具调用** - 症状评估、科室推荐等医疗专业工具
 - 🔌 **MCP 协议** - 支持 Model Context Protocol，连接 Memory/Sequential Thinking/Time 服务
 - 🌊 **SSE 流式输出** - 实时流式响应，提升用户体验
@@ -40,8 +43,12 @@
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                          Controller 层                                   │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
-│  │ChatController│ │AgentController│ │MedicalStream│ │StreamChatCtrl │  │
-│  │   /chat      │ │   /agent      │ │/api/stream  │ │  /api/stream   │  │
+│  │ChatController│ │AgentController│ │MedicalStream│ │MemoryController│  │
+│  │   /chat      │ │   /agent      │ │/api/stream  │ │ /api/memory   │  │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └────────────────┘  │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
+│  │PdfUploadCtrl │ │ RagController│ │StreamChatCtrl│ │MedicationCtrl │  │
+│  │ /api/pdf     │ │   /api/kb    │ │/api/stream   │ │/api/medication│  │
 │  └──────────────┘ └──────────────┘ └──────────────┘ └────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -49,30 +56,34 @@
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                          Service 层                                      │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
-│  │KnowledgeBase │ │MilvusKnowledge│ │PdfParseSvc  │ │ McpToolService │  │
+│  │RedisMemory   │ │MilvusKnowledge│ │PdfUploadSvc │ │ McpToolService │  │
 │  │   Service    │ │    Service   │ │              │ │  (MCP Client)  │  │
 │  └──────────────┘ └──────────────┘ └──────────────┘ └────────────────┘  │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                     │
+│  │MemorySync    │ │RagService    │ │PdfParseService│                    │
+│  │   Worker     │ │              │ │              │                     │
+│  └──────────────┘ └──────────────┘ └──────────────┘                     │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-┌───────────────────────┐ ┌─────────────────┐ ┌─────────────────────────────┐
-│   AI 集成层           │ │   MCP 服务层     │ │        存储层               │
-│   (LangChain4j)       │ │ (Model Context  │ │                             │
-│ ┌─────────┐ ┌───────┐ │ │   Protocol)     │ │ ┌─────────┐ ┌────────────┐ │
-│ │ChatModel│ │Embed  │ │ │ ┌─────────────┐ │ │ │ Milvus  │ │ InMemory   │ │
-│ │(Stream) │ │Model  │ │ │ │Memory MCP   │ │ │ │向量库   │ │向量库      │ │
-│ └─────────┘ └───────┘ │ │ │(知识图谱)   │ │ │ └─────────┘ └────────────┘ │
-│ ┌─────────┐           │ │ └─────────────┘ │ │                             │
-│ │AiService│           │ │ ┌─────────────┐ │ │ ┌─────────────────────────┐│
-│ │(Agent)  │           │ │ │Sequential   │ │ │ │ 本地文件存储(持久化)   ││
-│ └─────────┘           │ │ │Thinking MCP │ │ │ └─────────────────────────┘│
-│                       │ │ └─────────────┘ │ └─────────────────────────────┘
-│                       │ │ ┌─────────────┐ │
-│                       │ │ │Time MCP     │ │
-│                       │ │ │(时间服务)   │ │
-│                       │ │ └─────────────┘ │
-└───────────────────────┘ └─────────────────┘
+                    ┌───────────────┼───────────────┬───────────────┐
+                    ▼               ▼               ▼               ▼
+┌───────────────────────┐ ┌─────────────────┐ ┌───────────┐ ┌─────────────┐
+│   AI 集成层           │ │   MCP 服务层     │ │  存储层   │ │  缓存层     │
+│   (LangChain4j)       │ │ (Model Context  │ │           │ │  (Redis)    │
+│ ┌─────────┐ ┌───────┐ │ │   Protocol)     │ │ ┌───────┐ │ │ ┌─────────┐ │
+│ │ChatModel│ │Embed  │ │ │ ┌─────────────┐ │ │ │Milvus │ │ │ │会话存储 │ │
+│ │(Stream) │ │Model  │ │ │ │Memory MCP   │ │ │ │向量库 │ │ │ │消息存储 │ │
+│ └─────────┘ └───────┘ │ │ │(知识图谱)   │ │ │ └───────┘ │ │ │用户索引 │ │
+│ ┌─────────┐           │ │ └─────────────┘ │ │ ┌───────┐ │ │ │MCP队列  │ │
+│ │AiService│           │ │ ┌─────────────┐ │ │ │ MySQL │ │ │ └─────────┘ │
+│ │(Agent)  │           │ │ │Sequential   │ │ │ │关系库 │ │ │             │
+│ └─────────┘           │ │ │Thinking MCP │ │ │ └───────┘ │ │             │
+│                       │ │ └─────────────┘ │ │           │ │             │
+│                       │ │ ┌─────────────┐ │ │           │ │             │
+│                       │ │ │Time MCP     │ │ │           │ │             │
+│                       │ │ │(时间服务)   │ │ │           │ │             │
+│                       │ │ └─────────────┘ │ │           │ │             │
+└───────────────────────┘ └─────────────────┘ └───────────┘ └─────────────┘
 ```
 
 ---
@@ -89,7 +100,9 @@ SAA-01HelloWorld/
 │   │   ├── JwtUtils.java                 # JWT 工具类
 │   │   ├── JwtAuthenticationFilter.java  # JWT 认证过滤器
 │   │   ├── MilvusConfig.java             # Milvus 向量数据库配置
-│   │   └── MedicalToolsConfig.java       # 医疗工具配置
+│   │   ├── MedicalToolsConfig.java       # 医疗工具配置
+│   │   ├── RedisConfig.java              # Redis 配置 ⭐新增
+│   │   └── RedisProperties.java          # Redis 属性配置 ⭐新增
 │   │
 │   ├── configer/                         # LangChain4j 配置
 │   │   ├── LangChina4JConfig.java        # AI 模型、工具、Agent 配置
@@ -102,7 +115,8 @@ SAA-01HelloWorld/
 │   │   ├── RagController.java            # RAG 知识库管理接口
 │   │   ├── StreamChatController.java     # SSE 流式聊天接口
 │   │   ├── StreamRagController.java      # SSE 流式 RAG 接口
-│   │   └── MedicalStreamController.java  # 医疗流式聊天接口
+│   │   ├── MedicalStreamController.java  # 医疗流式聊天接口
+│   │   └── PdfUploadController.java      # PDF 上传接口 ⭐新增
 │   │
 │   ├── mcp/                              # MCP 协议模块
 │   │   ├── McpClientConfig.java          # MCP Client 配置
@@ -116,13 +130,23 @@ SAA-01HelloWorld/
 │   │   ├── MedicalChatController.java    # 医疗对话控制器
 │   │   ├── SafetyGuard.java              # 安全机制（紧急检测/内容过滤）
 │   │   │
+│   │   ├── controller/                   # 医疗子控制器 ⭐新增
+│   │   │   └── MemoryController.java     # 历史对话查询 API
+│   │   │
+│   │   ├── service/                      # 医疗服务 ⭐新增
+│   │   │   ├── RedisMemoryService.java   # Redis 分层记忆管理
+│   │   │   └── MemorySyncWorker.java     # MCP 异步同步 Worker
+│   │   │
 │   │   ├── context/                      # 上下文管理
 │   │   │   ├── HybridContext.java        # 混合上下文
 │   │   │   └── HybridContextManager.java # 上下文管理器
 │   │   │
 │   │   ├── dto/                          # 数据传输对象
 │   │   │   ├── ChatRequest.java          # 聊天请求
-│   │   │   └── ChatResponse.java         # 聊天响应
+│   │   │   ├── ChatResponse.java         # 聊天响应
+│   │   │   ├── MessageDTO.java           # 消息 DTO ⭐新增
+│   │   │   ├── SessionDetailDTO.java     # 会话详情 DTO ⭐新增
+│   │   │   └── SessionSummaryDTO.java    # 会话摘要 DTO ⭐新增
 │   │   │
 │   │   ├── session/                      # 会话管理
 │   │   │   ├── Session.java              # 会话实体
@@ -132,7 +156,7 @@ SAA-01HelloWorld/
 │   │   └── tools/                        # 医疗工具
 │   │       └── MedicalTools.java         # 症状评估、科室推荐
 │   │
-│   ├── user/                             # 用户模块 ⭐新增
+│   ├── user/                             # 用户模块
 │   │   ├── controller/
 │   │   │   └── AuthController.java       # 认证控制器（注册/登录）
 │   │   │
@@ -151,7 +175,7 @@ SAA-01HelloWorld/
 │   │       ├── RegisterRequest.java      # 注册请求
 │   │       └── UserResponse.java         # 用户响应
 │   │
-│   ├── medication/                       # 用药提醒模块 ⭐新增
+│   ├── medication/                       # 用药提醒模块
 │   │   ├── controller/
 │   │   │   └── MedicationController.java # 用药管理控制器
 │   │   │
@@ -177,7 +201,8 @@ SAA-01HelloWorld/
 │       ├── RagService.java               # RAG 检索增强生成服务
 │       ├── MilvusEmbeddingStore.java     # Milvus Embedding 存储实现
 │       ├── MilvusKnowledgeService.java   # Milvus 向量检索服务
-│       └── PdfParseService.java          # PDF 文档解析服务
+│       ├── PdfParseService.java          # PDF 文档解析服务
+│       └── PdfUploadService.java         # PDF 上传处理服务 ⭐新增
 │
 ├── src/main/resources/
 │   ├── application.yml                   # 应用配置
@@ -185,14 +210,15 @@ SAA-01HelloWorld/
 │   │   ├── index.html                    # 主页（医疗资讯大屏）
 │   │   ├── login.html                    # 登录/注册页面
 │   │   ├── medication-calendar.html      # 用药日历页面
-│   │   ├── digital-human.html            # 数字人界面
 │   │   └── img.png                       # 嘎嘎助手头像
 │   └── configer/
 │       └── banner.txt                    # 启动 Banner
 │
-├── data/kb/                              # 知识库数据目录
-│   ├── kb-items.json                     # 知识条目
-│   └── kb-embeddings.json                # 向量嵌入缓存
+├── data/                                 # 数据目录
+│   ├── kb/                               # 知识库数据
+│   │   ├── kb-items.json                 # 知识条目
+│   │   └── kb-embeddings.json            # 向量嵌入缓存
+│   └── temp/                             # 临时文件目录 ⭐新增
 │
 └── pom.xml                               # Maven 依赖配置
 ```
@@ -221,6 +247,20 @@ spring:
   application:
     name: SAA-01HelloWord
 
+  # Redis 配置 ⭐新增
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    password:
+    database: 0
+    timeout: 5000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: -1ms
+
   # MySQL 数据源配置
   datasource:
     url: jdbc:mysql://localhost:3306/first?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf-8
@@ -235,14 +275,15 @@ spring:
     show-sql: false
 
   ai:
+    dashscope:
+      api-key: YOUR_DASHSCOPE_API_KEY    # 阿里云灵积 API Key
     zhipuai:
-      api-key: YOUR_ZHIPU_API_KEY    # 替换为你的智谱 API Key
+      api-key: YOUR_ZHIPU_API_KEY        # 智谱 API Key
       chat:
         options:
-          model: glm-4-flash
+          model: glm-4                   # glm-4 支持函数调用，glm-4-flash 不支持
 
-  # MCP 配置
-  ai:
+    # MCP 配置
     mcp:
       server:
         name: medical-mcp-server
@@ -614,11 +655,98 @@ GET /api/kb/stats
 DELETE /api/kb/{id}
 ```
 
+### 8. PDF 文档上传 ⭐新增
+
+#### 上传 PDF 文档
+```http
+POST /api/pdf/upload
+Content-Type: multipart/form-data
+
+file: <PDF文件>
+```
+
+**响应示例：**
+```json
+{
+  "success": true,
+  "message": "成功处理 PDF，共 15 个片段，已存入 Milvus 向量数据库",
+  "fileName": "健康指南.pdf",
+  "totalChunks": 15,
+  "chunkIds": ["id1", "id2", ...]
+}
+```
+
+**限制：**
+- 最大文件大小：10MB
+- 支持格式：PDF（校验魔数 %PDF）
+
+### 9. 历史对话管理 ⭐新增
+
+#### 获取用户会话列表
+```http
+GET /api/memory/sessions?userId={userId}
+```
+
+**响应示例：**
+```json
+[
+  {
+    "sessionId": "sess_abc123",
+    "title": "高血压咨询...",
+    "messageCount": 10,
+    "lastActiveAt": 1712505600000,
+    "createdAt": 1712400000000
+  }
+]
+```
+
+#### 获取会话详情（分页消息）
+```http
+GET /api/memory/session/{sessionId}?limit=20&offset=0
+```
+
+**响应示例：**
+```json
+{
+  "sessionId": "sess_abc123",
+  "title": "高血压咨询...",
+  "messageCount": 10,
+  "createdAt": 1712400000000,
+  "lastActiveAt": 1712505600000,
+  "messages": [
+    {
+      "messageId": "sess_abc123:1",
+      "role": "user",
+      "content": "最近头晕怎么办？",
+      "timestamp": 1712400000000,
+      "sequence": 1
+    },
+    {
+      "messageId": "sess_abc123:2",
+      "role": "assistant",
+      "content": "您好！头晕可能由多种原因引起...",
+      "timestamp": 1712400100000,
+      "sequence": 2
+    }
+  ]
+}
+```
+
+#### 软删除会话
+```http
+DELETE /api/memory/session/{sessionId}
+```
+
+#### 获取会话总数
+```http
+GET /api/memory/sessions/count?userId={userId}
+```
+
 ---
 
 ## 🛠️ 核心模块说明
 
-### 🔐 用户认证模块 ⭐新增
+### 🔐 用户认证模块
 
 基于 JWT Token 的用户认证系统：
 
@@ -634,7 +762,7 @@ DELETE /api/kb/{id}
 - Token 有效期：24 小时
 - 无状态会话：SessionCreationPolicy.STATELESS
 
-### 💊 用药提醒模块 ⭐新增
+### 💊 用药提醒模块
 
 完整的用药提醒与服药记录管理系统：
 
@@ -675,6 +803,88 @@ public void generateMedicationRecords() {
 | `/api/medication/records/{id}/skip` | POST | 跳过服药 |
 | `/api/medication/calendar` | GET | 获取日历数据 |
 | `/api/medication/stats` | GET | 获取统计数据 |
+
+### 💾 Redis 分层记忆模块 ⭐新增
+
+基于 Redis 的会话持久化与历史对话管理系统：
+
+#### 数据模型
+
+| Key 模式 | 类型 | 说明 |
+|----------|------|------|
+| `chat:session:{sessionId}` | Hash | 会话元数据（标题、状态、消息数等） |
+| `chat:session:{sessionId}:messages` | List | 消息 ID 列表（按时间正序） |
+| `chat:message:{messageId}` | Hash | 消息内容（角色、内容、时间戳） |
+| `chat:user:{userId}:sessions` | ZSet | 用户会话索引（按最后活跃时间排序） |
+| `chat:mcp:retry:queue` | List | MCP 同步重试队列 |
+| `chat:mcp:sync:status:{messageId}` | Hash | MCP 同步状态（重试次数、错误信息） |
+
+#### TTL 配置
+
+| 数据类型 | TTL |
+|----------|-----|
+| 会话数据 | 7 天 |
+| 消息数据 | 30 天 |
+| MCP 同步状态 | 90 天 |
+
+#### 核心方法
+
+| 方法 | 功能 |
+|------|------|
+| `saveMessage(sessionId, userId, role, content)` | 保存消息，更新会话元数据 |
+| `getSessions(userId)` | 获取用户会话列表（最近 20 条） |
+| `getSessionDetail(sessionId, limit, offset)` | 分页获取会话消息 |
+| `softDeleteSession(sessionId)` | 软删除会话 |
+| `enqueueMcpSync(...)` | 入队 MCP 同步消息 |
+| `pollMcpSyncQueue()` | 消费 MCP 同步队列 |
+
+### 🔄 MCP 异步同步模块 ⭐新增
+
+异步消费 Redis 队列，实现 MCP Memory 同步：
+
+#### MemorySyncWorker
+
+```java
+@Scheduled(fixedDelay = 5000)  // 每 5 秒执行
+public void processRetryQueue() {
+    // 1. 从 Redis 队列获取待同步消息
+    // 2. 调用 MCP storeMemory
+    // 3. 成功：记录同步状态
+    // 4. 失败：指数退避重试（最多 3 次）
+}
+```
+
+#### 重试策略
+
+| 重试次数 | 延迟时间 |
+|----------|----------|
+| 1 | 5 秒 |
+| 2 | 10 秒 |
+| 3 | 15 秒 |
+| 超过 3 次 | 记录死信日志，告警 |
+
+### 📄 PDF 文档处理模块 ⭐新增
+
+PDF 文档上传、解析、切分、入库一站式服务：
+
+#### 处理流程
+
+```
+PDF 上传 → 魔数校验 → PDFBox 解析 → 文本切分 → Embedding → Milvus 存储
+```
+
+#### PdfUploadService
+
+| 方法 | 功能 |
+|------|------|
+| `processPdf(pdfBytes, fileName)` | 完整处理流程 |
+| `isValidPdfMagicNumber(bytes)` | 校验 PDF 魔数（%PDF） |
+
+#### 限制
+
+- 最大文件大小：10MB
+- 支持格式：仅 PDF
+- 临时文件自动清理
 
 ### 🔒 安全机制 (SafetyGuard)
 
@@ -794,18 +1004,20 @@ public void generateMedicationRecords() {
 | 类别 | 技术 |
 |------|------|
 | **框架** | Spring Boot 3.x |
-| **AI 集成** | Spring AI Alibaba, LangChain4j |
-| **大模型** | 智谱 GLM-4-Flash |
-| **向量数据库** | Milvus 2.6 |
+| **AI 集成** | Spring AI Alibaba, LangChain4j 0.36.2 |
+| **大模型** | 智谱 GLM-4（支持函数调用） |
+| **向量数据库** | Milvus 2.5.4 |
 | **关系数据库** | MySQL 8.0 |
+| **缓存数据库** | Redis 7.x（Lettuce 客户端） |
 | **ORM** | Spring Data JPA |
 | **安全框架** | Spring Security |
-| **认证方式** | JWT Token |
+| **认证方式** | JWT Token (JJWT 0.12.3) |
 | **密码加密** | BCrypt |
 | **Embedding** | ZhipuAI Embedding (1024维) |
-| **MCP 协议** | Model Context Protocol SDK |
+| **MCP 协议** | Spring AI MCP Server/Client |
 | **流式输出** | Server-Sent Events (SSE) |
 | **定时任务** | Spring Scheduling |
+| **PDF 解析** | Apache PDFBox 2.0.29 |
 | **工具库** | Lombok, Jackson |
 
 ---
@@ -840,24 +1052,34 @@ public void generateMedicationRecords() {
   - [x] 基础流式聊天
   - [x] 医疗流式对话
   - [x] 紧急事件优先推送
-- [x] 用户认证系统 ⭐新增
+- [x] 用户认证系统
   - [x] 用户注册/登录
   - [x] JWT Token 认证
   - [x] Spring Security 集成
   - [x] 接口权限控制
-- [x] 用药提醒系统 ⭐新增
+- [x] 用药提醒系统
   - [x] 提醒计划管理 (CRUD)
   - [x] 定时任务调度
   - [x] 服药记录追踪
   - [x] 日历视图数据
   - [x] 服药统计与依从性
-  - [x] AI 自然语言创建提醒（说"我要每天8点吃药"自动创建）⭐新增
-- [x] 前端页面 ⭐新增
+  - [x] AI 自然语言创建提醒（说"我要每天8点吃药"自动创建）
+- [x] Redis 分层记忆系统 ⭐新增
+  - [x] 会话持久化存储
+  - [x] 历史对话管理 API
+  - [x] 用户会话索引
+  - [x] MCP 异步同步队列
+  - [x] 失败重试机制
+- [x] PDF 文档处理 ⭐新增
+  - [x] PDF 上传 API
+  - [x] PDFBox 解析
+  - [x] 自动切分入库
+  - [x] 魔数校验安全
+- [x] 前端页面
   - [x] 登录/注册页面
   - [x] 主页（医疗资讯大屏）
   - [x] 用药日历页面
   - [x] AI 对话集成
-- [ ] PDF 文档解析入库
 - [ ] 多模态支持（语音、图像）
 - [ ] 用户画像与个性化推荐
 - [ ] 微信/短信提醒推送

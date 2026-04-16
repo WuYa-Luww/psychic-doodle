@@ -101,6 +101,128 @@
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
+        /* 历史对话区域样式 */
+        .history-section {
+            margin-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.12);
+            padding-top: 12px;
+        }
+        .history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .history-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.92);
+        }
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .history-item {
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid transparent;
+            cursor: pointer;
+            font-size: 12px;
+            color: rgba(255,255,255,0.65);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .history-item:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.92);
+        }
+        .history-item.active {
+            background: rgba(124,92,255,0.18);
+            border-color: rgba(124,92,255,0.35);
+            color: rgba(255,255,255,0.92);
+        }
+        .history-item-title {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .history-item-time {
+            font-size: 10px;
+            color: rgba(255,255,255,0.65);
+            opacity: 0.7;
+        }
+        .history-item-delete {
+            opacity: 0;
+            padding: 2px 4px;
+            border-radius: 4px;
+            color: #ff4d4f;
+            font-size: 10px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .history-item:hover .history-item-delete {
+            opacity: 1;
+        }
+        .history-item-delete:hover {
+            background: rgba(255,77,79,0.2);
+        }
+        .history-empty {
+            color: rgba(255,255,255,0.65);
+            font-size: 12px;
+            text-align: center;
+            padding: 12px 0;
+        }
+        .new-chat-btn {
+            width: 100%;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px dashed rgba(255,255,255,0.12);
+            background: transparent;
+            color: rgba(255,255,255,0.65);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .new-chat-btn:hover {
+            border-color: #7c5cff;
+            color: #7c5cff;
+            background: rgba(124,92,255,0.1);
+        }
+        /* 空状态水印背景字 */
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--muted);
+            pointer-events: none;
+            opacity: 0.4;
+            font-size: 16px;
+            line-height: 1.6;
+            user-select: none;
+            transition: opacity 0.3s ease;
+        }
+        .empty-state.hidden {
+            opacity: 0;
+        }
+        .chat-container {
+            position: relative;
+            min-height: 400px;
+        }
     </style>
 </head>
 <body class="min-h-screen bg-[#050505] text-zinc-400 antialiased overflow-hidden">
@@ -240,24 +362,43 @@
 
     <!-- AI 交互层 -->
     <div id="aiLayer" class="fixed inset-0 flex items-center justify-center p-8 z-30 pointer-events-none opacity-0 translate-y-8 transition-all duration-500">
-        <div class="w-full max-w-2xl bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl pointer-events-auto">
-            <div class="px-6 py-4 border-b border-zinc-800">
-                <h2 class="text-lg font-semibold text-white tracking-wide">嘎嘎 AI 助手</h2>
-                <p class="text-sm text-zinc-500 mt-1">您的智能医疗助手</p>
-            </div>
-            <div id="chatMessages" class="h-80 overflow-y-auto p-6 space-y-4">
-                <div class="flex justify-start">
-                    <div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md">
-                        <p class="text-sm text-zinc-300">我是嘎嘎，你的智能医疗助手。有什么可以帮您？</p>
+        <div class="w-full max-w-5xl h-[600px] bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl pointer-events-auto flex overflow-hidden">
+            <!-- 左侧边栏：历史对话 -->
+            <aside class="w-72 flex-shrink-0 bg-zinc-900/50 border-r border-zinc-800 flex flex-col">
+                <div class="p-4 border-b border-zinc-800">
+                    <h2 class="text-base font-semibold text-white tracking-wide">历史对话</h2>
+                </div>
+                <div class="p-3">
+                    <button class="new-chat-btn" id="newChatBtn">+ 新建对话</button>
+                </div>
+                <div class="flex-1 overflow-y-auto px-3 pb-3" id="historyList">
+                    <div class="history-empty">暂无历史对话</div>
+                </div>
+            </aside>
+
+            <!-- 右侧：聊天区域 -->
+            <main class="flex-1 flex flex-col min-w-0">
+                <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-semibold text-white tracking-wide">嘎嘎 AI 助手</h2>
+                        <p class="text-sm text-zinc-500 mt-1">您的智能医疗助手</p>
                     </div>
                 </div>
-            </div>
-            <div class="px-6 py-4 border-t border-zinc-800 flex gap-3">
-                <input type="text" id="messageInput" placeholder="请输入您的问题..."
-                    class="flex-1 px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
-                <button onclick="sendMessage()" class="px-5 py-2.5 bg-zinc-100 text-zinc-900 font-medium rounded-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300">发送</button>
-                <button onclick="closeAI()" class="px-5 py-2.5 bg-zinc-800 text-zinc-300 font-medium rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all duration-300">返回</button>
-            </div>
+                <div id="chatMessages" class="flex-1 overflow-y-auto p-6 space-y-4">
+                    <!-- 空状态占位符 -->
+                    <div id="emptyPlaceholder" class="flex items-center justify-center h-full">
+                        <p class="text-zinc-600 text-lg italic text-center select-none">
+                            我是嘎嘎，你的智能医疗助手。<br>有什么可以帮您？
+                        </p>
+                    </div>
+                </div>
+                <div class="px-6 py-4 border-t border-zinc-800 flex gap-3">
+                    <input type="text" id="messageInput" placeholder="请输入您的问题..."
+                        class="flex-1 px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
+                    <button onclick="sendMessage()" class="px-5 py-2.5 bg-zinc-100 text-zinc-900 font-medium rounded-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300">发送</button>
+                    <button onclick="closeAI()" class="px-5 py-2.5 bg-zinc-800 text-zinc-300 font-medium rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all duration-300">返回</button>
+                </div>
+            </main>
         </div>
     </div>
 
@@ -265,22 +406,172 @@
         const medicalLayer = document.getElementById('medicalLayer');
         const aiLayer = document.getElementById('aiLayer');
         const cardsContainer = document.getElementById('cardsContainer');
+        const chatMessages = document.getElementById('chatMessages');
+        const emptyPlaceholder = document.getElementById('emptyPlaceholder');
         let isOpen = false;
 
         marked.setOptions({ breaks: true, gfm: true });
 
-        let currentSessionId = localStorage.getItem('medical_session_id') || '';
+        // ============ 历史对话状态管理 ============
+        let currentUserId = 'default_user';
+        let currentSessionId = localStorage.getItem('medical_session_id') || null;
+        let sessions = [];
+
+        // ============ JWT Token 解析工具 ============
+        function parseJwt(token) {
+            try {
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                return JSON.parse(jsonPayload);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // ============ 历史对话 API ============
+        async function loadSessions() {
+            try {
+                const token = localStorage.getItem('token');
+                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+                const resp = await fetch(`/api/memory/sessions?userId=${encodeURIComponent(currentUserId)}`, { headers });
+                if (resp.ok) {
+                    sessions = await resp.json();
+                    renderHistoryList();
+                }
+            } catch (e) {
+                console.error('加载历史对话失败:', e);
+            }
+        }
+
+        async function loadSessionDetail(sessionId) {
+            try {
+                const token = localStorage.getItem('token');
+                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+                const resp = await fetch(`/api/memory/session/${encodeURIComponent(sessionId)}?limit=50&offset=0`, { headers });
+                if (resp.ok) {
+                    return await resp.json();
+                }
+            } catch (e) {
+                console.error('加载会话详情失败:', e);
+            }
+            return null;
+        }
+
+        async function deleteSession(sessionId, event) {
+            event.stopPropagation();
+            if (!confirm('确定要删除该会话吗？')) return;
+            try {
+                const token = localStorage.getItem('token');
+                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+                const resp = await fetch(`/api/memory/session/${encodeURIComponent(sessionId)}`, {
+                    method: 'DELETE',
+                    headers
+                });
+                if (resp.ok) {
+                    if (currentSessionId === sessionId) {
+                        currentSessionId = null;
+                        chatMessages.innerHTML = '';
+                        emptyPlaceholder.style.display = 'flex';
+                    }
+                    await loadSessions();
+                }
+            } catch (e) {
+                console.error('删除会话失败:', e);
+            }
+        }
+
+        async function selectSession(sessionId) {
+            currentSessionId = sessionId;
+            localStorage.setItem('medical_session_id', currentSessionId);
+            chatMessages.innerHTML = '';
+            emptyPlaceholder.style.display = 'none';
+
+            const detail = await loadSessionDetail(sessionId);
+            if (detail && detail.messages) {
+                for (const msg of detail.messages) {
+                    const isUser = msg.role === 'user';
+                    addChatMessage(isUser ? 'user' : 'bot', msg.content);
+                }
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            renderHistoryList();
+        }
+
+        function renderHistoryList() {
+            const listEl = document.getElementById('historyList');
+            if (!sessions || sessions.length === 0) {
+                listEl.innerHTML = '<div class="history-empty">暂无历史对话</div>';
+                return;
+            }
+
+            listEl.innerHTML = sessions.map(s => {
+                const timeStr = formatRelativeTime(s.lastActiveAt);
+                const isActive = s.sessionId === currentSessionId ? 'active' : '';
+                const escapedSessionId = escapeHtml(s.sessionId).replace(/'/g, "\\'");
+                return `
+                    <div class="history-item ${isActive}" onclick="selectSession('${escapedSessionId}')">
+                        <span class="history-item-title">${escapeHtml(s.title || '未命名对话')}</span>
+                        <span class="history-item-time">${timeStr}</span>
+                        <span class="history-item-delete" onclick="deleteSession('${escapedSessionId}', event)">删除</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatRelativeTime(timestamp) {
+            if (!timestamp) return '';
+            const now = Date.now();
+            const diff = now - timestamp;
+            const minute = 60 * 1000;
+            const hour = 60 * minute;
+            const day = 24 * hour;
+
+            if (diff < minute) return '刚刚';
+            if (diff < hour) return Math.floor(diff / minute) + '分钟前';
+            if (diff < day) return Math.floor(diff / hour) + '小时前';
+            if (diff < 7 * day) return Math.floor(diff / day) + '天前';
+            return new Date(timestamp).toLocaleDateString('zh-CN');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>"']/g, (m) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        function newChat() {
+            currentSessionId = null;
+            localStorage.removeItem('medical_session_id');
+            chatMessages.innerHTML = '';
+            emptyPlaceholder.style.display = 'flex';
+            renderHistoryList();
+        }
+
+        // ============ 聊天消息渲染 ============
+        function addChatMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            const bgClass = role === 'user' ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-800 border border-zinc-700 text-zinc-300';
+            const radiusClass = role === 'user' ? 'rounded-br-md' : 'rounded-bl-md';
+            div.innerHTML = `<div class="max-w-[75%] px-4 py-3 ${bgClass} rounded-2xl ${radiusClass}"><div class="text-sm markdown-content">${role === 'user' ? escapeHtml(text) : renderMarkdown(text)}</div></div>`;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // ============ 轮询与服药提醒（保持不变）============
         let pendingRecords = [];
         let currentPendingId = null;
         let pollingInterval = null;
 
-        // 启动轮询
         function startPolling() {
             checkPendingReminders();
             pollingInterval = setInterval(checkPendingReminders, 30000);
         }
 
-        // 检查待服药提醒
         async function checkPendingReminders() {
             const token = localStorage.getItem('token');
             if (!token) return;
@@ -300,14 +591,12 @@
             }
         }
 
-        // 显示通知
         function showMedicationNotification(record) {
             currentPendingId = record.id;
             const time = record.scheduledTime ? record.scheduledTime.substring(11, 16) : '';
             document.getElementById('notificationText').textContent =
                 `该服用 ${record.medicationName} ${record.dosage || ''} (${time})`;
             document.getElementById('medicationNotification').classList.remove('hidden');
-            // 播放提示音
             try {
                 const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQsGgLXk5ZlJBwWApeLmmEYGB4Cg4eaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEY=');
                 audio.volume = 0.5;
@@ -354,7 +643,6 @@
             }
         }
 
-        // 启动轮询
         startPolling();
 
         function openAI() {
@@ -385,14 +673,12 @@
         }
 
         function renderMarkdown(text) {
-            // 先手动转义 HTML 特殊字符，保留换行符
             let escaped = text
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
-            // 然后用 marked 解析 Markdown
             return marked.parse(escaped);
         }
 
@@ -401,13 +687,16 @@
             const message = input.value.trim();
             if (!message) return;
 
-            const chatMessages = document.getElementById('chatMessages');
-            chatMessages.insertAdjacentHTML('beforeend', `<div class="flex justify-end"><div class="max-w-[75%] px-4 py-3 bg-zinc-100 text-zinc-900 rounded-2xl rounded-br-md"><p class="text-sm">${escapeHtml(message)}</p></div></div>`);
+            if (emptyPlaceholder) {
+                emptyPlaceholder.style.display = 'none';
+            }
+
+            addChatMessage('user', message);
             input.value = '';
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
             const aiMsgId = 'ai-msg-' + Date.now();
-            chatMessages.insertAdjacentHTML('beforeend', `<div class="flex justify-start"><div id="${aiMsgId}" class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><div class="text-sm text-zinc-300 markdown-content"><span class="streaming-cursor">▊</span></div></div></div>`);
+            chatMessages.insertAdjacentHTML('beforeend', `<div id="${aiMsgId}" class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-2xl rounded-bl-md"><div class="text-sm text-zinc-300 markdown-content"><span class="streaming-cursor">▊</span></div></div></div>`);
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
             let fullResponse = '';
@@ -423,28 +712,21 @@
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        sessionId: currentSessionId || ('medical_' + Date.now()),
+                        sessionId: currentSessionId || null,
                         message: message
                     })
                 });
 
                 if (!response.ok) throw new Error('HTTP ' + response.status);
 
-                if (!currentSessionId) {
-                    currentSessionId = 'medical_' + Date.now();
-                    localStorage.setItem('medical_session_id', currentSessionId);
-                }
-
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
                 let isCompleted = false;
-                // 用于累积同一事件的多个 data 行（SSE 规范：换行符会拆分成多行 data）
                 let dataBuffer = [];
 
                 while (true) {
                     const { done, value } = await reader.read();
-
                     if (value) buffer += decoder.decode(value, { stream: true });
 
                     const lines = buffer.split('\n');
@@ -453,21 +735,16 @@
 
                     for (const line of lines) {
                         if (line.startsWith('event:')) {
-                            // 新事件开始，先处理之前累积的 data
                             if (dataBuffer.length > 0) {
                                 processData(currentEvent, dataBuffer.join('\n'));
                                 dataBuffer = [];
                             }
                             currentEvent = line.substring(6).trim();
                         } else if (line.startsWith('data:')) {
-                            // 累积 data 行（去掉 "data:" 前缀，保留一个前导空格的处理）
                             let data = line.substring(5);
-                            if (data.startsWith(' ')) {
-                                data = data.substring(1);
-                            }
+                            if (data.startsWith(' ')) data = data.substring(1);
                             dataBuffer.push(data);
                         } else if (line === '') {
-                            // 空行表示事件结束，处理累积的 data
                             if (dataBuffer.length > 0) {
                                 processData(currentEvent, dataBuffer.join('\n'));
                                 dataBuffer = [];
@@ -477,7 +754,6 @@
                     }
 
                     if (done || isCompleted) {
-                        // 处理剩余的 data
                         if (dataBuffer.length > 0) {
                             processData(currentEvent, dataBuffer.join('\n'));
                         }
@@ -498,6 +774,18 @@
                         isCompleted = true;
                         cursorEl.remove();
                         contentDiv.innerHTML = renderMarkdown(fullResponse);
+                        // 从 done 事件的 data 中提取 sessionId（如果返回的是 JSON）
+                        try {
+                            const chatResponse = JSON.parse(data);
+                            if (chatResponse.sessionId) {
+                                currentSessionId = chatResponse.sessionId;
+                                localStorage.setItem('medical_session_id', currentSessionId);
+                            }
+                        } catch (e) {
+                            // done 事件的 data 可能为空字符串，忽略解析错误
+                        }
+                        // 刷新历史对话列表
+                        loadSessions();
                     } else if (event === 'emergency') {
                         chatMessages.insertAdjacentHTML('beforeend', `<div class="flex justify-start"><div class="max-w-[75%] px-4 py-3 bg-red-900/50 border border-red-700 rounded-2xl rounded-bl-md"><p class="text-sm text-red-200">⚠️ ${escapeHtml(data)}</p></div></div>`);
                     } else if (event === 'emergency_append') {
@@ -517,20 +805,52 @@
             document.getElementById('messageInput').focus();
         }
 
+        // ============ 事件绑定 ============
         medicalLayer.addEventListener('click', openAI);
 
         document.getElementById('messageInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
 
-        // 检查登录状态
-        function checkAuth() {
+        document.getElementById('newChatBtn').addEventListener('click', newChat);
+
+        // ============ 初始化 ============
+        async function init() {
             const token = localStorage.getItem('token');
             if (!token) {
                 window.location.href = '/login.html';
+                return;
+            }
+
+            // 从 JWT token 解析 userId
+            const jwtPayload = parseJwt(token);
+            if (jwtPayload && jwtPayload.sub) {
+                currentUserId = jwtPayload.sub;
+            }
+
+            // 先加载历史对话列表
+            await loadSessions();
+
+            // 再恢复会话（根据 localStorage 中的 sessionId）
+            if (currentSessionId) {
+                // 检查该 sessionId 是否存在于列表中
+                const sessionExists = sessions.some(s => s.sessionId === currentSessionId);
+                if (sessionExists) {
+                    await selectSession(currentSessionId);
+                } else {
+                    // sessionId 已过期/不存在，显示空状态
+                    currentSessionId = null;
+                    localStorage.removeItem('medical_session_id');
+                    emptyPlaceholder.style.display = 'flex';
+                }
+            } else {
+                emptyPlaceholder.style.display = 'flex';
             }
         }
-        checkAuth();
+
+        init();
+
+        // ============ 其他功能（PDF、服药提醒等）保持不变 ============
 
         // PDF 上传相关
         function openPdfUpload() {
