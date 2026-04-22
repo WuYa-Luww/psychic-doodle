@@ -1,384 +1,858 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>用药日历 - 嘎嘎 AI 医疗助手</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        * { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-        .time-slot { transition: all 0.2s ease; }
-        .time-slot:hover { transform: scale(1.02); }
-        .modal-overlay { background: rgba(0,0,0,0.8); }
+        :root {
+            --bg: #0B0B0F;
+            --bg-2: #08080C;
+            --surface-1: rgba(255, 255, 255, 0.03);
+            --surface-2: rgba(255, 255, 255, 0.06);
+            --surface-3: rgba(255, 255, 255, 0.09);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-strong: rgba(255, 255, 255, 0.15);
+            --text-1: #F0F0F0;
+            --text-2: #C8C8C8;
+            --text-3: #8B8B8B;
+            --text-4: #555555;
+            --accent-primary: #00D4FF;
+            --accent-secondary: #8B5CF6;
+            --accent-warm: #FB923C;
+            --success: #22C55E;
+            --error: #EF4444;
+            --warning: #F59E0B;
+            --accent-primary-rgb: 0, 212, 255;
+            --accent-secondary-rgb: 139, 92, 246;
+            --font-heading: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            --ease: cubic-bezier(.2, 0, 0, 1);
+        }
+        * { font-family: var(--font-body); box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--text-2);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        /* Aurora Background */
+        .aurora-bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 70% 50% at 30% 20%, rgba(139, 92, 246, 0.08), transparent),
+                radial-gradient(ellipse 50% 40% at 70% 80%, rgba(0, 212, 255, 0.06), transparent);
+        }
+        /* Navbar */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 16px 32px;
+            background: rgba(11, 11, 15, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-title {
+            font: 600 20px/1 var(--font-heading);
+            color: var(--text-1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .nav-title-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .nav-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-3);
+            font: 500 14px/1 var(--font-body);
+            cursor: pointer;
+            transition: all 0.25s var(--ease);
+            text-decoration: none;
+        }
+        .nav-btn:hover {
+            background: var(--surface-2);
+            border-color: var(--border-strong);
+            color: var(--text-1);
+        }
+        /* Main Content */
+        .main-content {
+            position: relative;
+            z-index: 1;
+            padding: 100px 24px 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: rgba(11, 11, 15, 0.6);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: statReveal 0.5s var(--ease) forwards;
+        }
+        .stat-card:nth-child(1) { animation-delay: 0.1s; }
+        .stat-card:nth-child(2) { animation-delay: 0.15s; }
+        .stat-card:nth-child(3) { animation-delay: 0.2s; }
+        .stat-card:nth-child(4) { animation-delay: 0.25s; }
+        @keyframes statReveal {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-4);
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            font: 700 28px/1 var(--font-heading);
+            color: var(--text-1);
+        }
+        .stat-card.pending .stat-value { color: var(--accent-warm); }
+        .stat-card.done .stat-value { color: var(--success); }
+        .stat-card.weekly .stat-value { color: var(--accent-secondary); }
+        .stat-card.rate .stat-value { color: var(--accent-primary); }
+        /* Two Column Layout */
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 900px) {
+            .layout-grid { grid-template-columns: 1fr; }
+        }
+        /* Panel */
+        .panel {
+            background: rgba(11, 11, 15, 0.6);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .panel-title {
+            font: 600 16px/1 var(--font-heading);
+            color: var(--text-1);
+        }
+        .panel-body {
+            padding: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        /* Add Button */
+        .add-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: var(--accent-secondary);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font: 500 13px/1 var(--font-body);
+            cursor: pointer;
+            transition: all 0.25s var(--ease);
+        }
+        .add-btn:hover {
+            background: #7c3aed;
+            box-shadow: 0 0 20px rgba(var(--accent-secondary-rgb), 0.35);
+        }
+        /* Reminder Item */
+        .reminder-item {
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all 0.25s var(--ease);
+        }
+        .reminder-item:hover {
+            border-color: var(--border-strong);
+            background: var(--surface-2);
+        }
+        .reminder-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .reminder-name {
+            font: 600 15px/1 var(--font-heading);
+            color: var(--text-1);
+        }
+        .reminder-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .reminder-btn {
+            width: 32px;
+            height: 32px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            color: var(--text-4);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s var(--ease);
+        }
+        .reminder-btn:hover {
+            background: var(--surface-2);
+            color: var(--text-2);
+        }
+        .reminder-btn.delete:hover {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--error);
+        }
+        .reminder-meta {
+            font-size: 13px;
+            color: var(--text-4);
+        }
+        .reminder-time {
+            color: var(--accent-primary);
+            font-weight: 500;
+        }
+        /* Calendar */
+        .calendar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        .calendar-nav {
+            width: 40px;
+            height: 40px;
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s var(--ease);
+        }
+        .calendar-nav:hover {
+            background: var(--surface-2);
+            color: var(--text-1);
+        }
+        .calendar-title {
+            font: 600 18px/1 var(--font-heading);
+            color: var(--text-1);
+        }
+        .calendar-weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .calendar-weekday {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-4);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+        }
+        .calendar-days {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            padding: 16px;
+        }
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            font-size: 14px;
+            color: var(--text-3);
+            cursor: pointer;
+            transition: all 0.2s var(--ease);
+            background: transparent;
+            border: 1px solid transparent;
+        }
+        .calendar-day:hover {
+            background: var(--surface-2);
+            border-color: var(--border);
+        }
+        .calendar-day.other-month {
+            color: var(--text-4);
+            opacity: 0.5;
+        }
+        .calendar-day.today {
+            background: var(--accent-secondary);
+            color: white;
+            font-weight: 600;
+        }
+        .calendar-day.today:hover {
+            box-shadow: 0 0 20px rgba(var(--accent-secondary-rgb), 0.4);
+        }
+        .calendar-day.has-reminder {
+            position: relative;
+        }
+        .calendar-day.has-reminder::after {
+            content: '';
+            position: absolute;
+            bottom: 6px;
+            width: 6px;
+            height: 6px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+        }
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-4);
+            font-size: 14px;
+        }
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 500;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s var(--ease);
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal {
+            width: 100%;
+            max-width: 440px;
+            background: rgba(17, 18, 23, 0.95);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            transform: translateY(20px);
+            transition: transform 0.35s var(--ease);
+        }
+        .modal-overlay.active .modal { transform: translateY(0); }
+        .modal-header {
+            padding: 24px 28px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-title {
+            font: 600 18px/1 var(--font-heading);
+            color: var(--text-1);
+        }
+        .modal-close {
+            width: 36px;
+            height: 36px;
+            background: var(--surface-1);
+            border: none;
+            border-radius: 10px;
+            color: var(--text-3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s var(--ease);
+        }
+        .modal-close:hover {
+            background: var(--surface-2);
+            color: var(--text-1);
+        }
+        .modal-body { padding: 28px; }
+        /* Form */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-3);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .form-input, .form-select {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-1);
+            font: 400 15px/1 var(--font-body);
+            transition: all 0.25s var(--ease);
+        }
+        .form-input::placeholder { color: var(--text-4); }
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.1);
+        }
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 28px;
+        }
+        .form-btn {
+            flex: 1;
+            padding: 14px;
+            border-radius: 12px;
+            font: 600 14px/1 var(--font-body);
+            cursor: pointer;
+            transition: all 0.25s var(--ease);
+            border: none;
+        }
+        .form-btn.primary {
+            background: var(--accent-secondary);
+            color: white;
+        }
+        .form-btn.primary:hover {
+            box-shadow: 0 0 24px rgba(var(--accent-secondary-rgb), 0.35);
+        }
+        .form-btn.secondary {
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            color: var(--text-3);
+        }
+        .form-btn.secondary:hover {
+            background: var(--surface-2);
+            color: var(--text-1);
+        }
+        /* Notification Toast */
+        .notification {
+            position: fixed;
+            top: 100px;
+            right: 24px;
+            z-index: 600;
+            max-width: 360px;
+            background: rgba(17, 18, 23, 0.95);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(var(--accent-secondary-rgb), 0.3);
+            border-radius: 16px;
+            padding: 20px;
+            opacity: 0;
+            transform: translateX(40px);
+            transition: all 0.35s var(--ease);
+            pointer-events: none;
+        }
+        .notification.active {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+        .notification-icon {
+            width: 44px;
+            height: 44px;
+            background: var(--accent-secondary);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 14px;
+        }
+        .notification-title {
+            font: 600 16px/1 var(--font-heading);
+            color: var(--text-1);
+            margin-bottom: 6px;
+        }
+        .notification-text {
+            font-size: 14px;
+            color: var(--text-3);
+            margin-bottom: 16px;
+        }
+        .notification-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .notif-btn {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font: 500 13px/1 var(--font-body);
+            cursor: pointer;
+            transition: all 0.2s var(--ease);
+            text-align: center;
+            border: none;
+        }
+        .notif-btn.primary {
+            background: var(--success);
+            color: white;
+        }
+        .notif-btn.primary:hover { filter: brightness(1.1); }
+        .notif-btn.secondary {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text-3);
+        }
+        .notif-btn.secondary:hover {
+            background: var(--surface-3);
+            color: var(--text-1);
+        }
+        /* Responsive */
+        @media (max-width: 640px) {
+            .navbar { padding: 12px 16px; }
+            .nav-title { font-size: 16px; }
+            .main-content { padding: 80px 16px 24px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+            .stat-card { padding: 16px; }
+            .stat-value { font-size: 22px; }
+            .panel { border-radius: 16px; }
+            .panel-header, .calendar-header { padding: 16px 20px; }
+            .panel-body { padding: 16px; }
+            .modal { border-radius: 20px; }
+        }
+        /* Reduced Motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
-<body class="min-h-screen bg-[#050505] text-zinc-400 antialiased">
-    <!-- 紫色弥散光 -->
-    <div class="fixed top-0 right-0 w-[600px] h-[600px] pointer-events-none"
-         style="background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.1) 0%, transparent 70%);"></div>
+<body>
+    <div class="aurora-bg"></div>
 
-    <!-- 顶部导航栏 -->
-    <div class="fixed top-0 left-0 right-0 z-20 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800">
-        <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-            <h1 class="text-lg font-semibold text-white tracking-wide">用药日历</h1>
-            <div class="flex items-center gap-4">
-                <button onclick="goBack()" class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-                    </svg>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between;">
+            <div class="nav-title">
+                <div class="nav-title-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                </div>
+                用药日历
+            </div>
+            <div style="display: flex; gap: 12px;">
+                <a href="/index.html" class="nav-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
                     返回
+                </a>
+                <button class="nav-btn" onclick="handleLogout()">退出登录</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card pending">
+                <div class="stat-label">今日待服</div>
+                <div class="stat-value" id="todayPending">0</div>
+            </div>
+            <div class="stat-card done">
+                <div class="stat-label">今日已服</div>
+                <div class="stat-value" id="todayCompleted">0</div>
+            </div>
+            <div class="stat-card weekly">
+                <div class="stat-label">本周提醒</div>
+                <div class="stat-value" id="weekReminders">0</div>
+            </div>
+            <div class="stat-card rate">
+                <div class="stat-label">依从性</div>
+                <div class="stat-value" id="complianceRate">--%</div>
+            </div>
+        </div>
+
+        <!-- Two Column Layout -->
+        <div class="layout-grid">
+            <!-- Left: Reminders -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">提醒计划</div>
+                    <button class="add-btn" onclick="showAddModal()">+ 新增</button>
+                </div>
+                <div class="panel-body" id="remindersList">
+                    <div class="empty-state">加载中...</div>
+                </div>
+            </div>
+
+            <!-- Right: Calendar -->
+            <div class="panel">
+                <div class="calendar-header">
+                    <button class="calendar-nav" onclick="changeMonth(-1)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <div class="calendar-title" id="calendarTitle"></div>
+                    <button class="calendar-nav" onclick="changeMonth(1)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+                <div class="calendar-weekdays">
+                    <div class="calendar-weekday">日</div>
+                    <div class="calendar-weekday">一</div>
+                    <div class="calendar-weekday">二</div>
+                    <div class="calendar-weekday">三</div>
+                    <div class="calendar-weekday">四</div>
+                    <div class="calendar-weekday">五</div>
+                    <div class="calendar-weekday">六</div>
+                </div>
+                <div class="calendar-days" id="calendarDays"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Notification -->
+    <div class="notification" id="notification">
+        <div class="notification-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        </div>
+        <div class="notification-title">服药提醒</div>
+        <div class="notification-text" id="notificationText"></div>
+        <div class="notification-actions">
+            <button class="notif-btn primary" onclick="confirmFromNotification()">已服药</button>
+            <button class="notif-btn secondary" onclick="skipFromNotification()">跳过</button>
+            <button class="notif-btn secondary" onclick="closeNotification()">稍后</button>
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div class="modal-overlay" id="reminderModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">新增提醒计划</div>
+                <button class="modal-close" onclick="closeModal()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
-                <button onclick="handleLogout()" class="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all">
-                    退出登录
-                </button>
             </div>
-        </div>
-    </div>
-
-    <!-- 主内容区 -->
-    <div class="pt-20 pb-8 px-6">
-        <div class="max-w-6xl mx-auto">
-            <!-- 统计卡片 -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
-                    <div class="text-xs text-zinc-500 mb-1">今日待服</div>
-                    <div class="text-2xl font-semibold text-white" id="todayPending">0</div>
-                </div>
-                <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
-                    <div class="text-xs text-zinc-500 mb-1">今日已服</div>
-                    <div class="text-2xl font-semibold text-green-400" id="todayCompleted">0</div>
-                </div>
-                <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
-                    <div class="text-xs text-zinc-500 mb-1">本周提醒</div>
-                    <div class="text-2xl font-semibold text-purple-400" id="weekReminders">0</div>
-                </div>
-                <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
-                    <div class="text-xs text-zinc-500 mb-1">依从性</div>
-                    <div class="text-2xl font-semibold text-blue-400" id="complianceRate">--%</div>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- 左侧：提醒计划 -->
-                <div class="lg:col-span-1">
-                    <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4 mb-4">
-                        <div class="flex items-center justify-between mb-4">
-                            <h2 class="text-base font-semibold text-white">提醒计划</h2>
-                            <button onclick="showAddModal()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition-colors">
-                                + 新增
-                            </button>
-                        </div>
-                        <div id="remindersList" class="space-y-3">
-                            <div class="text-center text-zinc-500 py-8">加载中...</div>
-                        </div>
+            <div class="modal-body">
+                <form id="reminderForm" onsubmit="handleSubmit(event)">
+                    <div class="form-group">
+                        <label class="form-label">药品名称</label>
+                        <input type="text" class="form-input" id="medicationName" required placeholder="如：阿司匹林">
                     </div>
-                </div>
-
-                <!-- 右侧：日历视图 -->
-                <div class="lg:col-span-2">
-                    <div class="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-xl p-4">
-                        <div class="flex items-center justify-between mb-4">
-                            <button onclick="changeMonth(-1)" class="p-2 hover:bg-zinc-800 rounded-lg transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-                            </button>
-                            <h2 class="text-base font-semibold text-white" id="calendarTitle"></h2>
-                            <button onclick="changeMonth(1)" class="p-2 hover:bg-zinc-800 rounded-lg transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                            </button>
-                        </div>
-                        <!-- 日历头部 -->
-                        <div class="calendar-grid mb-2">
-                            <div class="text-center text-xs text-zinc-500">日</div>
-                            <div class="text-center text-xs text-zinc-500">一</div>
-                            <div class="text-center text-xs text-zinc-500">二</div>
-                            <div class="text-center text-xs text-zinc-500">三</div>
-                            <div class="text-center text-xs text-zinc-500">四</div>
-                            <div class="text-center text-xs text-zinc-500">五</div>
-                            <div class="text-center text-xs text-zinc-500">六</div>
-                        </div>
-                        <!-- 日历日期 -->
-                        <div id="calendarDays" class="calendar-grid"></div>
+                    <div class="form-group">
+                        <label class="form-label">剂量</label>
+                        <input type="text" class="form-input" id="dosage" required placeholder="如：1 片/次">
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 通知弹窗 -->
-    <div id="notificationToast" class="fixed top-20 right-6 z-50 hidden">
-        <div class="bg-zinc-900 border border-purple-500/50 rounded-xl p-4 shadow-2xl max-w-sm animate-pulse">
-            <div class="flex items-start gap-3">
-                <div class="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-                    </svg>
-                </div>
-                <div class="flex-1">
-                    <h4 class="text-white font-medium">服药提醒</h4>
-                    <p id="notificationText" class="text-sm text-zinc-400 mt-1"></p>
-                    <div class="flex gap-2 mt-3">
-                        <button onclick="confirmFromNotification()" class="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded-lg transition-colors">已服药</button>
-                        <button onclick="skipFromNotification()" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-sm rounded-lg transition-colors">跳过</button>
-                        <button onclick="closeNotification()" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg transition-colors">稍后</button>
+                    <div class="form-group">
+                        <label class="form-label">提醒频率</label>
+                        <select class="form-select" id="frequency">
+                            <option value="DAILY">每天</option>
+                            <option value="WEEKLY">每周</option>
+                        </select>
                     </div>
-                </div>
+                    <div class="form-group">
+                        <label class="form-label">提醒时间</label>
+                        <input type="time" class="form-input" id="remindTime" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="form-btn primary">保存</button>
+                        <button type="button" class="form-btn secondary" onclick="closeModal()">取消</button>
+                    </div>
+                </form>
             </div>
-        </div>
-    </div>
-
-    <!-- 添加/编辑提醒弹窗 -->
-    <div id="reminderModal" class="modal-overlay fixed inset-0 z-50 hidden items-center justify-center">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4">
-            <h3 class="text-lg font-semibold text-white mb-4" id="modalTitle">新增提醒计划</h3>
-            <form id="reminderForm" onsubmit="handleSubmit(event)" class="space-y-4">
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">药品名称</label>
-                    <input type="text" id="medicationName" required class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
-                </div>
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">剂量</label>
-                    <input type="text" id="dosage" required class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600" placeholder="如：1 片/次">
-                </div>
-                <div>
-                    <label class="block text text-zinc-400 mb-1">提醒频率</label>
-                    <select id="frequency" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
-                        <option value="DAILY">每天</option>
-                        <option value="WEEKLY">每周</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">提醒时间</label>
-                    <input type="time" id="remindTime" required class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600">
-                </div>
-                <div class="flex gap-3 pt-4">
-                    <button type="submit" class="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition-colors">保存</button>
-                    <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm rounded-lg hover:bg-zinc-700 transition-colors">取消</button>
-                </div>
-            </form>
         </div>
     </div>
 
     <script>
-        const API_BASE = '';
+        // ========== State ==========
         let currentReminders = [];
         let currentMonth = new Date();
         let editingId = null;
         let pendingRecords = [];
-        let currentPendingId = null;
+        let pendingRecordId = null;
         let pollingInterval = null;
 
-        // 检查登录状态
-        function checkAuth() {
+        // ========== Init ==========
+        function init() {
             const token = localStorage.getItem('token');
             if (!token) {
                 window.location.href = '/login.html';
+                return;
             }
-        }
-        checkAuth();
-
-        // 退出登录
-        function handleLogout() {
-            localStorage.removeItem('token');
-            window.location.href = '/login.html';
+            fetchReminders();
+            renderCalendar();
+            startPolling();
         }
 
-        // 返回上一页（类似 vue 的 go(-1)）
-        function goBack() {
-            if (window.history.length > 1 && document.referrer.includes(window.location.host)) {
-                window.history.back();
-            } else {
-                window.location.href = '/index.html';
-            }
-        }
-
-        // ==================== 轮询待服药提醒 ====================
-
+        // ========== Polling ==========
         function startPolling() {
-            // 立即检查一次
             checkPendingReminders();
-            // 每30秒轮询一次
             pollingInterval = setInterval(checkPendingReminders, 30000);
         }
 
         async function checkPendingReminders() {
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_BASE}/api/medication/pending`, {
+                const resp = await fetch('/api/medication/pending', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (response.ok) {
-                    const data = await response.json();
-                    pendingRecords = data;
-                    if (data.length > 0) {
-                        showNotification(data[0]);
+                if (resp.ok) {
+                    pendingRecords = await resp.json();
+                    if (pendingRecords.length > 0) {
+                        showNotification(pendingRecords[0]);
                     }
                     updateStats();
                 }
-            } catch (error) {
-                console.error('轮询失败:', error);
+            } catch (e) {
+                console.error('轮询失败:', e);
             }
         }
 
         function showNotification(record) {
-            currentPendingId = record.id;
+            pendingRecordId = record.id;
             const time = record.scheduledTime ? record.scheduledTime.substring(11, 16) : '';
             document.getElementById('notificationText').textContent =
                 `该服用 ${record.medicationName} ${record.dosage || ''} (${time})`;
-            document.getElementById('notificationToast').classList.remove('hidden');
-            // 播放提示音（可选）
-            try {
-                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQsGgLXk5ZlJBwWApeLmmEYGB4Cg4eaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEYGB4Cf4OaYRgYHgJ/h5pdGBgeAn+DnmEY=');
-                audio.volume = 0.5;
-                audio.play().catch(() => {});
-            } catch (e) {}
+            document.getElementById('notification').classList.add('active');
         }
 
         function closeNotification() {
-            document.getElementById('notificationToast').classList.add('hidden');
-            currentPendingId = null;
+            document.getElementById('notification').classList.remove('active');
+            pendingRecordId = null;
         }
 
         async function confirmFromNotification() {
-            if (!currentPendingId) return;
+            if (!pendingRecordId) return;
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_BASE}/api/medication/records/${currentPendingId}/confirm`, {
+                const resp = await fetch(`/api/medication/records/${pendingRecordId}/confirm`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (response.ok) {
+                if (resp.ok) {
                     closeNotification();
                     fetchReminders();
                     checkPendingReminders();
-                } else {
-                    const err = await response.text();
-                    alert('确认失败: ' + err);
                 }
-            } catch (error) {
-                alert('操作失败');
-            }
+            } catch (e) { alert('操作失败'); }
         }
 
         async function skipFromNotification() {
-            if (!currentPendingId) return;
+            if (!pendingRecordId) return;
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_BASE}/api/medication/records/${currentPendingId}/skip`, {
+                const resp = await fetch(`/api/medication/records/${pendingRecordId}/skip`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (response.ok) {
+                if (resp.ok) {
                     closeNotification();
                     fetchReminders();
                     checkPendingReminders();
-                } else {
-                    const err = await response.text();
-                    alert('跳过失败: ' + err);
                 }
-            } catch (error) {
-                alert('操作失败');
-            }
+            } catch (e) { alert('操作失败'); }
         }
 
-        // 获取提醒列表
+        // ========== Reminders ==========
         async function fetchReminders() {
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_BASE}/api/medication/reminders`, {
+                const resp = await fetch('/api/medication/reminders', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (response.ok) {
-                    const data = await response.json();
-                    currentReminders = data;
+                if (resp.ok) {
+                    currentReminders = await resp.json();
                     renderReminders();
                     updateStats();
-                } else if (response.status === 401) {
+                } else if (resp.status === 401) {
                     localStorage.removeItem('token');
                     window.location.href = '/login.html';
-                } else {
-                    document.getElementById('remindersList').innerHTML = '<div class="text-center text-red-400 py-8">获取失败</div>';
                 }
-            } catch (error) {
-                document.getElementById('remindersList').innerHTML = '<div class="text-center text-red-400 py-8">网络错误</div>';
+            } catch (e) {
+                document.getElementById('remindersList').innerHTML = '<div class="empty-state">网络错误</div>';
             }
         }
 
-        // 渲染提醒列表
         function renderReminders() {
             const container = document.getElementById('remindersList');
             if (currentReminders.length === 0) {
-                container.innerHTML = '<div class="text-center text-zinc-500 py-8">暂无提醒计划</div>';
+                container.innerHTML = '<div class="empty-state">暂无提醒计划</div>';
                 return;
             }
             container.innerHTML = currentReminders.map(r => `
-                <div class="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="text-white text-sm font-medium">${escapeHtml(r.medicationName)}</div>
-                            <div class="text-xs text-zinc-500 mt-1">${r.dosage} | ${r.frequency}</div>
-                            <div class="text-xs text-zinc-500 mt-0.5">${r.remindTimes?.[0] || ''}</div>
-                        </div>
-                        <div class="flex gap-2">
-                            <button onclick="editReminder(${r.id})" class="p-1.5 hover:bg-zinc-700 rounded transition-colors">
-                                <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                <div class="reminder-item">
+                    <div class="reminder-header">
+                        <div class="reminder-name">${escapeHtml(r.medicationName)}</div>
+                        <div class="reminder-actions">
+                            <button class="reminder-btn" onclick="editReminder(${r.id})" title="编辑">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                             </button>
-                            <button onclick="deleteReminder(${r.id})" class="p-1.5 hover:bg-red-900/50 rounded transition-colors">
-                                <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            <button class="reminder-btn delete" onclick="deleteReminder(${r.id})" title="删除">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                             </button>
                         </div>
+                    </div>
+                    <div class="reminder-meta">
+                        ${r.dosage} · ${r.frequency === 'DAILY' ? '每天' : '每周'} · <span class="reminder-time">${r.remindTimes?.[0] || ''}</span>
                     </div>
                 </div>
             `).join('');
         }
 
-        // 更新统计数据
         async function updateStats() {
             const token = localStorage.getItem('token');
-
-            // 调用后端统计接口获取依从性和已服数量
             try {
-                const response = await fetch(`${API_BASE}/api/medication/stats?days=7`, {
+                const resp = await fetch('/api/medication/stats?days=7', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (response.ok) {
-                    const stats = await response.json();
-                    // 依从性
-                    const rate = stats.adherenceRate !== undefined && stats.adherenceRate !== null ? stats.adherenceRate : 0;
-                    document.getElementById('complianceRate').textContent = rate + '%';
-                    // 今日已服
-                    const todayTaken = stats.todayTaken !== undefined ? stats.todayTaken : 0;
-                    document.getElementById('todayCompleted').textContent = todayTaken;
-                    // 今日待服 = 今日总数 - 今日已服
-                    const todayTotal = stats.todayTotal !== undefined ? stats.todayTotal : 0;
-                    const todayPending = todayTotal - todayTaken;
-                    document.getElementById('todayPending').textContent = todayPending;
-                    // 本周提醒数
+                if (resp.ok) {
+                    const stats = await resp.json();
+                    document.getElementById('complianceRate').textContent = (stats.adherenceRate || 0) + '%';
+                    document.getElementById('todayCompleted').textContent = stats.todayTaken || 0;
+                    const pending = (stats.todayTotal || 0) - (stats.todayTaken || 0);
+                    document.getElementById('todayPending').textContent = Math.max(0, pending);
                     document.getElementById('weekReminders').textContent = currentReminders.length;
                 }
-            } catch (error) {
-                console.error('获取统计失败:', error);
-                // 显示默认值
+            } catch (e) {
                 document.getElementById('todayPending').textContent = pendingRecords.length;
             }
         }
 
-        // ==================== 提醒计划管理 ====================
-
-        // 显示添加弹窗
+        // ========== Modal ==========
         function showAddModal() {
             editingId = null;
             document.getElementById('modalTitle').textContent = '新增提醒计划';
             document.getElementById('reminderForm').reset();
-            document.getElementById('reminderModal').classList.remove('hidden');
+            document.getElementById('reminderModal').classList.add('active');
         }
 
-        // 关闭弹窗
         function closeModal() {
-            document.getElementById('reminderModal').classList.add('hidden');
+            document.getElementById('reminderModal').classList.remove('active');
         }
 
-        // 编辑提醒
         function editReminder(id) {
             const reminder = currentReminders.find(r => r.id === id);
             if (!reminder) return;
@@ -387,10 +861,10 @@
             document.getElementById('medicationName').value = reminder.medicationName;
             document.getElementById('dosage').value = reminder.dosage;
             document.getElementById('frequency').value = reminder.frequency;
-            document.getElementById('reminderModal').classList.remove('hidden');
+            document.getElementById('remindTime').value = reminder.remindTimes?.[0] || '';
+            document.getElementById('reminderModal').classList.add('active');
         }
 
-        // 提交表单
         async function handleSubmit(e) {
             e.preventDefault();
             const token = localStorage.getItem('token');
@@ -400,11 +874,10 @@
                 frequency: document.getElementById('frequency').value,
                 remindTimes: [document.getElementById('remindTime').value]
             };
-
             try {
-                const url = editingId ? `${API_BASE}/api/medication/reminders/${editingId}` : `${API_BASE}/api/medication/reminders`;
+                const url = editingId ? `/api/medication/reminders/${editingId}` : '/api/medication/reminders';
                 const method = editingId ? 'PUT' : 'POST';
-                const response = await fetch(url, {
+                const resp = await fetch(url, {
                     method,
                     headers: {
                         'Content-Type': 'application/json',
@@ -412,44 +885,39 @@
                     },
                     body: JSON.stringify(data)
                 });
-
-                if (response.ok) {
+                if (resp.ok) {
                     fetchReminders();
                     closeModal();
                 } else {
                     alert('操作失败');
                 }
-            } catch (error) {
+            } catch (e) {
                 alert('网络错误');
             }
         }
 
-        // 删除提醒
         async function deleteReminder(id) {
             if (!confirm('确定删除此提醒计划？')) return;
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_BASE}/api/medication/reminders/${id}`, {
+                const resp = await fetch(`/api/medication/reminders/${id}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (response.ok) {
-                    fetchReminders();
-                } else {
-                    alert('删除失败');
-                }
-            } catch (error) {
+                if (resp.ok) fetchReminders();
+                else alert('删除失败');
+            } catch (e) {
                 alert('网络错误');
             }
         }
 
-        // 渲染日历
+        // ========== Calendar ==========
         function renderCalendar() {
             const year = currentMonth.getFullYear();
             const month = currentMonth.getMonth();
             const firstDay = new Date(year, month, 1);
             const lastDay = new Date(year, month + 1, 0);
-            const startDay = new Date(year, month, 1 - firstDay.getDay());
+            const startDate = new Date(year, month, 1 - firstDay.getDay());
 
             document.getElementById('calendarTitle').textContent = `${year}年${month + 1}月`;
 
@@ -458,158 +926,19 @@
             const today = new Date();
 
             for (let i = 0; i < 42; i++) {
-                const date = new Date(startDay);
+                const date = new Date(startDate);
                 date.setDate(date.getDate() + i);
                 const isCurrentMonth = date.getMonth() === month;
                 const isToday = date.toDateString() === today.toDateString();
                 const day = date.getDate();
 
-                const cell = document.createElement('div');
-                cell.className = `aspect-square rounded-lg p-1 text-center text-sm cursor-pointer transition-colors ${
-                    isToday ? 'bg-purple-600 text-white' :
-                    isCurrentMonth ? 'bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-800/20 text-zinc-600'
-                }`;
-                cell.textContent = day;
-                cell.onclick = () => showDayRecords(date);
-                container.appendChild(cell);
-            }
-        }
-
-        // 显示某天的服药记录
-        async function showDayRecords(date) {
-            const token = localStorage.getItem('token');
-            const dateStr = date.toISOString().split('T')[0];
-            const start = dateStr + 'T00:00:00';
-            const end = dateStr + 'T23:59:59';
-
-            try {
-                const response = await fetch(`${API_BASE}/api/medication/calendar?start=${start}&end=${end}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (response.ok) {
-                    const records = await response.json();
-                    showDayRecordsModal(date, records);
-                }
-            } catch (error) {
-                console.error('获取日历数据失败:', error);
-            }
-        }
-
-        // 显示某天记录弹窗
-        function showDayRecordsModal(date, records) {
-            const dateStr = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
-
-            let html = `
-                <div class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" onclick="this.remove()">
-                    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4" onclick="event.stopPropagation()">
-                        <h3 class="text-lg font-semibold text-white mb-4">${dateStr} 服药记录</h3>
-                        <div class="space-y-3 max-h-80 overflow-y-auto">
-            `;
-
-            if (records.length === 0) {
-                html += `<div class="text-center text-zinc-500 py-8">暂无记录</div>`;
-            } else {
-                records.forEach(r => {
-                    const time = r.scheduledTime ? r.scheduledTime.substring(11, 16) : '';
-                    const statusColor = r.status === 'TAKEN' ? 'text-green-400' :
-                                       r.status === 'SKIPPED' ? 'text-yellow-400' :
-                                       r.status === 'MISSED' ? 'text-red-400' : 'text-zinc-400';
-                    const statusText = r.status === 'TAKEN' ? '已服' :
-                                      r.status === 'SKIPPED' ? '已跳过' :
-                                      r.status === 'MISSED' ? '漏服' : '待服';
-
-                    html += `
-                        <div class="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3 flex items-center justify-between">
-                            <div>
-                                <div class="text-white text-sm font-medium">${escapeHtml(r.medicationName)}</div>
-                                <div class="text-xs text-zinc-500 mt-1">${r.dosage || ''} | ${time} | <span class="${statusColor}">${statusText}</span></div>
-                            </div>
-                            ${r.status === 'PENDING' ? `
-                                <div class="flex gap-2">
-                                    <button onclick="confirmRecord(${r.id}, this)" class="px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded transition-colors">确认</button>
-                                    <button onclick="skipRecord(${r.id}, this)" class="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs rounded transition-colors">跳过</button>
-                                </div>
-                            ` : ''}
-                        </div>
-                    `;
-                });
-            }
-
-            html += `
-                        </div>
-                        <button onclick="this.closest('.fixed').remove()" class="mt-4 w-full px-4 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm rounded-lg hover:bg-zinc-700 transition-colors">关闭</button>
-                    </div>
-                </div>
-            `;
-
-            document.body.insertAdjacentHTML('beforeend', html);
-        }
-
-        // 确认服药
-        async function confirmRecord(id, btn) {
-            const token = localStorage.getItem('token');
-            try {
-                btn.disabled = true;
-                btn.textContent = '处理中...';
-                const response = await fetch(`${API_BASE}/api/medication/records/${id}/confirm`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (response.ok) {
-                    const result = await response.json();
-                    // 更新弹窗中的显示
-                    const container = btn.closest('.bg-zinc-800\\/50');
-                    container.innerHTML = `
-                        <div>
-                            <div class="text-white text-sm font-medium">${escapeHtml(result.medicationName || '药品')}</div>
-                            <div class="text-xs text-zinc-500 mt-1">${result.dosage || ''} | ${result.scheduledTime ? result.scheduledTime.substring(11, 16) : ''} | <span class="text-green-400">已服</span></div>
-                        </div>
-                    `;
-                    updateStats();
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = '确认';
-                    const err = await response.text();
-                    alert('确认失败: ' + err);
-                }
-            } catch (error) {
-                btn.disabled = false;
-                btn.textContent = '确认';
-                alert('网络错误');
-            }
-        }
-
-        // 跳过服药
-        async function skipRecord(id, btn) {
-            const token = localStorage.getItem('token');
-            try {
-                btn.disabled = true;
-                btn.textContent = '处理中...';
-                const response = await fetch(`${API_BASE}/api/medication/records/${id}/skip`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (response.ok) {
-                    const result = await response.json();
-                    // 更新弹窗中的显示
-                    const container = btn.closest('.bg-zinc-800\\/50');
-                    container.innerHTML = `
-                        <div>
-                            <div class="text-white text-sm font-medium">${escapeHtml(result.medicationName || '药品')}</div>
-                            <div class="text-xs text-zinc-500 mt-1">${result.dosage || ''} | ${result.scheduledTime ? result.scheduledTime.substring(11, 16) : ''} | <span class="text-yellow-400">已跳过</span></div>
-                        </div>
-                    `;
-                    updateStats();
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = '跳过';
-                    const err = await response.text();
-                    alert('跳过失败: ' + err);
-                }
-            } catch (error) {
-                btn.disabled = false;
-                btn.textContent = '跳过';
-                alert('网络错误');
+                const dayEl = document.createElement('div');
+                dayEl.className = 'calendar-day';
+                if (!isCurrentMonth) dayEl.classList.add('other-month');
+                if (isToday) dayEl.classList.add('today');
+                dayEl.textContent = day;
+                dayEl.onclick = () => showDayRecords(date);
+                container.appendChild(dayEl);
             }
         }
 
@@ -618,16 +947,117 @@
             renderCalendar();
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text || '';
-            return div.innerHTML;
+        async function showDayRecords(date) {
+            const token = localStorage.getItem('token');
+            const dateStr = date.toISOString().split('T')[0];
+            try {
+                const resp = await fetch(`/api/medication/calendar?start=${dateStr}T00:00:00&end=${dateStr}T23:59:59`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (resp.ok) {
+                    const records = await resp.json();
+                    showDayModal(date, records);
+                }
+            } catch (e) {
+                console.error('获取日历数据失败:', e);
+            }
         }
 
-        // 初始化
-        fetchReminders();
-        renderCalendar();
-        startPolling();
+        function showDayModal(date, records) {
+            const dateStr = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+            let html = `
+                <div class="modal-overlay active" onclick="if(event.target===this)this.remove()">
+                    <div class="modal" onclick="event.stopPropagation()">
+                        <div class="modal-header">
+                            <div class="modal-title">${dateStr} 服药记录</div>
+                            <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="modal-body" style="max-height:400px;overflow-y:auto;">
+            `;
+            if (records.length === 0) {
+                html += '<div class="empty-state">暂无记录</div>';
+            } else {
+                records.forEach(r => {
+                    const time = r.scheduledTime ? r.scheduledTime.substring(11, 16) : '';
+                    const statusClass = r.status === 'TAKEN' ? 'color:var(--success)' :
+                                       r.status === 'SKIPPED' ? 'color:var(--warning)' :
+                                       r.status === 'MISSED' ? 'color:var(--error)' : '';
+                    const statusText = r.status === 'TAKEN' ? '已服' :
+                                      r.status === 'SKIPPED' ? '已跳过' :
+                                      r.status === 'MISSED' ? '漏服' : '待服';
+                    html += `
+                        <div class="reminder-item">
+                            <div class="reminder-header">
+                                <div class="reminder-name">${escapeHtml(r.medicationName)}</div>
+                                ${r.status === 'PENDING' ? `
+                                    <div class="reminder-actions">
+                                        <button class="reminder-btn" onclick="confirmRecord(${r.id}, this)" style="color:var(--success)">确认</button>
+                                        <button class="reminder-btn" onclick="skipRecord(${r.id}, this)" style="color:var(--warning)">跳过</button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="reminder-meta">${r.dosage || ''} · ${time} · <span style="${statusClass}">${statusText}</span></div>
+                        </div>
+                    `;
+                });
+            }
+            html += '</div></div></div>';
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        async function confirmRecord(id, btn) {
+            const token = localStorage.getItem('token');
+            btn.disabled = true;
+            btn.textContent = '处理中...';
+            try {
+                const resp = await fetch(`/api/medication/records/${id}/confirm`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (resp.ok) {
+                    btn.closest('.reminder-item').querySelector('.reminder-meta').innerHTML =
+                        btn.closest('.reminder-item').querySelector('.reminder-meta').innerHTML.replace('待服', '<span style="color:var(--success)">已服</span>');
+                    btn.closest('.reminder-actions').remove();
+                    updateStats();
+                }
+            } catch (e) { alert('操作失败'); }
+        }
+
+        async function skipRecord(id, btn) {
+            const token = localStorage.getItem('token');
+            btn.disabled = true;
+            btn.textContent = '处理中...';
+            try {
+                const resp = await fetch(`/api/medication/records/${id}/skip`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (resp.ok) {
+                    btn.closest('.reminder-item').querySelector('.reminder-meta').innerHTML =
+                        btn.closest('.reminder-item').querySelector('.reminder-meta').innerHTML.replace('待服', '<span style="color:var(--warning)">已跳过</span>');
+                    btn.closest('.reminder-actions').remove();
+                    updateStats();
+                }
+            } catch (e) { alert('操作失败'); }
+        }
+
+        // ========== Utils ==========
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('token');
+            window.location.href = '/login.html';
+        }
+
+        // ========== Start ==========
+        init();
     </script>
 </body>
 </html>

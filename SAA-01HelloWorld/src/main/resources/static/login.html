@@ -1,143 +1,892 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>登录 - 嘎嘎 AI 医疗助手</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/Draggable.min.js"></script>
     <style>
-        * { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        /* ========== CSS 变量系统 ========== */
+        :root {
+            --bg: #121921;
+            --on: 0;
+            --shade-hue: 45;
+            --lamp-color: hsl(var(--shade-hue), 80%, 60%);
+            --lamp-glow: hsla(var(--shade-hue), 80%, 60%, 0.35);
+            --surface: rgba(255, 255, 255, 0.04);
+            --surface-2: rgba(255, 255, 255, 0.08);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-strong: rgba(255, 255, 255, 0.15);
+            --text: #e8e8e8;
+            --text-dim: #7a7a8a;
+            --text-muted: #4a4a5a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            background: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* ========== 背景光效 ========== */
+        .bg-glow {
+            position: fixed;
+            top: 50%;
+            left: 35%;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(ellipse, var(--lamp-glow) 0%, transparent 60%);
+            transform: translate(-50%, -50%);
+            opacity: var(--on);
+            transition: opacity 0.6s ease;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ========== 主容器 ========== */
+        .main-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 120px;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ========== 台灯容器 ========== */
+        .lamp-container {
+            position: relative;
+            width: 180px;
+            height: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .lamp-svg {
+            width: 100%;
+            height: 260px;
+            filter: drop-shadow(0 8px 32px rgba(0,0,0,0.4));
+        }
+
+        /* 拉绳样式 */
+        .pull-cord {
+            cursor: grab;
+        }
+
+        .pull-cord:hover {
+            filter: brightness(1.2);
+        }
+
+        /* 灯光效果 */
+        .lamp-light {
+            opacity: var(--on);
+            transition: opacity 0.5s ease;
+        }
+
+        .lamp-shade {
+            fill: var(--lamp-color);
+            transition: fill 0.5s ease;
+        }
+
+        .lamp-eye {
+            transform-origin: center;
+            transition: transform 0.45s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        .lamp-eye.off {
+            transform: rotate(180deg);
+        }
+
+        /* ========== 登录面板容器 ========== */
+        .panel-container {
+            width: 380px;
+            max-width: 90vw;
+            position: relative;
+        }
+
+        /* ========== 登录方式选择面板 ========== */
+        .login-methods {
+            padding: 40px 36px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            backdrop-filter: blur(24px);
+            opacity: 0;
+            transform: scale(0.85) translateY(20px);
+            pointer-events: none;
+            transition: border-color 0.5s ease, box-shadow 0.5s ease;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+        }
+
+        .login-methods.visible {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+        }
+
+        .login-methods.lit {
+            border-color: var(--lamp-color);
+            box-shadow: 0 0 50px var(--lamp-glow), 0 8px 40px rgba(0,0,0,0.35);
+        }
+
+        .methods-title {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 12px;
+            text-align: center;
+            letter-spacing: -0.02em;
+        }
+
+        .methods-subtitle {
+            font-size: 14px;
+            color: var(--text-dim);
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .method-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px 20px;
+            margin-bottom: 14px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .method-btn:last-child {
+            margin-bottom: 0;
+        }
+
+        .method-btn:hover {
+            border-color: var(--lamp-color);
+            background: rgba(255,255,255,0.06);
+            transform: translateX(4px);
+        }
+
+        .method-btn svg {
+            width: 22px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+
+        .method-btn.wechat svg {
+            color: #07c160;
+        }
+
+        .method-btn.github svg {
+            color: #e8e8e8;
+        }
+
+        .method-btn.password svg {
+            color: var(--lamp-color);
+        }
+
+        .method-btn-text {
+            flex: 1;
+            text-align: left;
+        }
+
+        .method-btn-arrow {
+            opacity: 0.4;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .method-btn:hover .method-btn-arrow {
+            opacity: 1;
+            transform: translateX(4px);
+        }
+
+        /* ========== 登录表单 ========== */
+        .login-form-container {
+            padding: 40px 36px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            backdrop-filter: blur(24px);
+            opacity: 0;
+            transform: scale(0.85) translateY(20px);
+            pointer-events: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            transition: border-color 0.5s ease, box-shadow 0.5s ease;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+        }
+
+        .login-form-container.visible {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+        }
+
+        .login-form-container.lit {
+            border-color: var(--lamp-color);
+            box-shadow: 0 0 50px var(--lamp-glow), 0 8px 40px rgba(0,0,0,0.35);
+        }
+
+        .form-back {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-dim);
+            font-size: 13px;
+            cursor: pointer;
+            margin-bottom: 24px;
+            transition: color 0.2s;
+            width: fit-content;
+        }
+
+        .form-back:hover {
+            color: var(--text);
+        }
+
+        .form-back svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .form-title {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 32px;
+            text-align: center;
+            letter-spacing: -0.02em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            font-size: 15px;
+            outline: none;
+            transition: all 0.25s ease;
+        }
+
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-input:focus {
+            border-color: var(--lamp-color);
+            box-shadow: 0 0 0 3px var(--lamp-glow);
+        }
+
+        .form-btn {
+            width: 100%;
+            padding: 16px;
+            background: var(--lamp-color);
+            border: none;
+            border-radius: 12px;
+            color: var(--bg);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: all 0.25s ease;
+        }
+
+        .form-btn:hover {
+            filter: brightness(1.12);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 28px var(--lamp-glow);
+        }
+
+        .form-btn:active {
+            transform: translateY(0);
+        }
+
+        .form-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .form-links {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+
+        .form-link {
+            color: var(--text-dim);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .form-link:hover {
+            color: var(--lamp-color);
+        }
+
+        .error-msg {
+            color: #ff6b6b;
+            font-size: 13px;
+            text-align: center;
+            margin-top: 16px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .error-msg.visible {
+            opacity: 1;
+        }
+
+        /* ========== 加载动画 ========== */
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ========== 底部署名 ========== */
+        .footer {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--text-muted);
+            font-size: 12px;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .footer-date {
+            opacity: 0.6;
+        }
+
+        .footer-author {
+            margin-top: 4px;
+            opacity: 0.8;
+        }
+
+        /* ========== 微信登录弹窗 ========== */
+        .wechat-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .wechat-modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .wechat-modal-content {
+            background: rgba(20, 22, 30, 0.98);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+            max-width: 360px;
+            width: 90%;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .wechat-modal.active .wechat-modal-content {
+            transform: scale(1);
+        }
+
+        .wechat-modal-content h3 {
+            color: var(--text);
+            font: 600 20px/1 sans-serif;
+            margin-bottom: 10px;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 24px;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            color: var(--text);
+            background: var(--surface-2);
+        }
+
+        .qr-container {
+            width: 200px;
+            height: 200px;
+            margin: 28px auto;
+            background: white;
+            border-radius: 14px;
+            padding: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .qr-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .wechat-hint {
+            color: var(--text-dim);
+            font-size: 14px;
+            margin-top: 18px;
+        }
+
+        /* ========== 响应式 ========== */
+        @media (max-width: 800px) {
+            .main-container {
+                flex-direction: column;
+                gap: 60px;
+            }
+
+            .lamp-container {
+                width: 150px;
+                height: 240px;
+            }
+
+            .lamp-svg {
+                height: 200px;
+            }
+
+            .panel-container {
+                width: 100%;
+                max-width: 380px;
+            }
+        }
+
+        /* ========== 减少动画 ========== */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
-<body class="min-h-screen bg-[#050505] text-zinc-400 antialiased flex items-center justify-center">
-    <!-- 紫色弥散光 -->
-    <div class="fixed top-0 right-0 w-[600px] h-[600px] pointer-events-none"
-         style="background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.1) 0%, transparent 70%);"></div>
+<body>
+    <!-- 背景光效 -->
+    <div class="bg-glow" id="bgGlow"></div>
 
-    <!-- 登录/注册卡片 -->
-    <div class="w-full max-w-md bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl relative z-10">
-        <div class="p-8">
-            <!-- 标题 -->
-            <div class="text-center mb-8">
-                <h1 class="text-2xl font-semibold text-white tracking-wide">嘎嘎 AI 医疗助手</h1>
-                <p class="text-sm text-zinc-500 mt-2">您的智能健康管理伙伴</p>
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 台灯 -->
+        <div class="lamp-container">
+            <svg class="lamp-svg" viewBox="0 0 180 260" id="lampSvg">
+                <defs>
+                    <radialGradient id="lightGlow" cx="50%" cy="0%" r="80%">
+                        <stop offset="0%" stop-color="var(--lamp-color)" stop-opacity="0.85"/>
+                        <stop offset="100%" stop-color="var(--lamp-color)" stop-opacity="0"/>
+                    </radialGradient>
+                    <linearGradient id="shadeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="var(--lamp-color)"/>
+                        <stop offset="100%" stop-color="#1a1a2e"/>
+                    </linearGradient>
+                </defs>
+
+                <!-- 灯光效果 -->
+                <ellipse class="lamp-light" cx="90" cy="55" rx="85" ry="45" fill="url(#lightGlow)" id="lampLight"/>
+
+                <!-- 灯座 -->
+                <ellipse cx="90" cy="235" rx="45" ry="10" fill="#2a2a3e"/>
+                <rect x="82" y="165" width="16" height="70" fill="#3a3a4e" rx="4"/>
+
+                <!-- 灯杆 -->
+                <rect x="86" y="95" width="8" height="70" fill="#3a3a4e"/>
+
+                <!-- 灯罩 -->
+                <path class="lamp-shade" d="M45,95 Q55,35 90,25 Q125,35 135,95 L120,95 Q115,55 90,45 Q65,55 60,95 Z" fill="url(#shadeGradient)"/>
+
+                <!-- 眼睛 -->
+                <g id="lampEyes">
+                    <circle class="lamp-eye off" id="leftEye" cx="78" cy="70" r="5" fill="#fff"/>
+                    <circle class="lamp-eye off" id="rightEye" cx="102" cy="70" r="5" fill="#fff"/>
+                    <circle class="lamp-eye off" cx="78" cy="72" r="2.5" fill="#1a1a2e"/>
+                    <circle class="lamp-eye off" cx="102" cy="72" r="2.5" fill="#1a1a2e"/>
+                </g>
+
+                <!-- 拉绳 -->
+                <g class="pull-cord" id="pullCord">
+                    <path id="cordPath" d="M90,120 Q90,145 90,175" stroke="#6a6a7a" stroke-width="2" fill="none" stroke-linecap="round"/>
+                    <circle cx="90" cy="180" r="7" fill="#4a4a5a"/>
+                    <circle cx="90" cy="180" r="4" fill="#6a6a7a"/>
+                </g>
+            </svg>
+        </div>
+
+        <!-- 登录面板容器 -->
+        <div class="panel-container">
+            <!-- 登录方式选择 -->
+            <div class="login-methods" id="loginMethods">
+                <h1 class="methods-title">欢迎回来</h1>
+                <p class="methods-subtitle">选择您的登录方式</p>
+
+                <button class="method-btn github" onclick="githubLogin()">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                    <span class="method-btn-text">GitHub 登录</span>
+                    <span class="method-btn-arrow">→</span>
+                </button>
+
+                <button class="method-btn wechat" onclick="wechatLogin()">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.66 5.854-1.147-.938-3.6-4.095-6.239-8.597-6.239zm8.34 6.238c-4.5 0-8.16 3.05-8.16 6.805 0 3.756 3.66 6.806 8.16 6.806.845 0 1.66-.105 2.43-.31a.71.71 0 0 1 .588.08l1.56.913a.265.265 0 0 0 .137.044.24.24 0 0 0 .238-.241c0-.059-.024-.118-.04-.175l-.318-1.21a.484.484 0 0 1 .175-.545c1.503-1.105 2.462-2.735 2.462-4.562 0-3.756-3.66-6.805-8.162-6.805z"/>
+                    </svg>
+                    <span class="method-btn-text">微信登录</span>
+                    <span class="method-btn-arrow">→</span>
+                </button>
+
+                <button class="method-btn password" onclick="showPasswordForm()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    <span class="method-btn-text">账号密码登录</span>
+                    <span class="method-btn-arrow">→</span>
+                </button>
             </div>
 
-            <!-- 切换标签 -->
-            <div class="flex mb-6 bg-zinc-800/50 rounded-lg p-1">
-                <button id="loginTab" onclick="switchTab('login')"
-                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all bg-zinc-100 text-zinc-900">
-                    登录
-                </button>
-                <button id="registerTab" onclick="switchTab('register')"
-                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200">
-                    注册
-                </button>
-            </div>
+            <!-- 账号密码登录表单 -->
+            <div class="login-form-container" id="loginFormContainer">
+                <div class="form-back" onclick="showMethodsPanel()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    返回
+                </div>
 
-            <!-- 登录表单 -->
-            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">用户名</label>
-                    <input type="text" id="loginUsername" required
-                        class="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                        placeholder="请输入用户名">
-                </div>
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">密码</label>
-                    <input type="password" id="loginPassword" required
-                        class="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                        placeholder="请输入密码">
-                </div>
-                <button type="submit"
-                    class="w-full py-2.5 bg-zinc-100 text-zinc-900 font-medium rounded-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300">
-                    登录
-                </button>
-            </form>
-
-            <!-- 注册表单 -->
-            <form id="registerForm" onsubmit="handleRegister(event)" class="space-y-4 hidden">
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">用户名</label>
-                    <input type="text" id="registerUsername" required
-                        class="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                        placeholder="请输入用户名">
-                </div>
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">昵称</label>
-                    <input type="text" id="registerNickname"
-                        class="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                        placeholder="请输入昵称（可选）">
-                </div>
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">密码</label>
-                    <input type="password" id="registerPassword" required
-                        class="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                        placeholder="请输入密码">
-                </div>
-                <div>
-                    <label class="block text-sm text-zinc-400 mb-1">确认密码</label>
-                    <input type="password" id="registerConfirmPassword" required
-                        class="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                        placeholder="请再次输入密码">
-                </div>
-                <button type="submit"
-                    class="w-full py-2.5 bg-zinc-100 text-zinc-900 font-medium rounded-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300">
-                    注册
-                </button>
-            </form>
-
-            <!-- 错误提示 -->
-            <div id="errorMessage" class="mt-4 text-red-400 text-sm text-center hidden"></div>
-
-            <!-- 返回主页 -->
-            <div class="mt-6 text-center">
-                <a href="/" class="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
-                    ← 返回主页
-                </a>
+                <h1 class="form-title">欢迎回来</h1>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label class="form-label">账号</label>
+                        <input type="text" class="form-input" id="username" name="username" placeholder="请输入用户名" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">密码</label>
+                        <input type="password" class="form-input" id="password" name="password" placeholder="请输入密码" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="form-btn" id="submitBtn">
+                        <span class="btn-text">登录</span>
+                    </button>
+                    <div class="error-msg" id="errorMsg"></div>
+                    <div class="form-links">
+                        <a href="#" class="form-link">忘记密码？</a>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
+    <!-- 微信登录弹窗 -->
+    <div class="wechat-modal" id="wechatModal">
+        <div class="wechat-modal-content">
+            <button class="modal-close" onclick="closeWechatModal()">&times;</button>
+            <h3>微信扫码登录</h3>
+            <div class="qr-container" id="qrContainer">
+                <div style="color:#666;font-size:13px;">加载中...</div>
+            </div>
+            <p class="wechat-hint">请使用微信扫描二维码</p>
+        </div>
+    </div>
+
+    <!-- 底部署名 -->
+    <div class="footer">
+        <div class="footer-date" id="footerDate"></div>
+        <div class="footer-author">乌鸦</div>
+    </div>
+
     <script>
+        // ========== 状态管理 ==========
+        let isLampOn = false;
+        let loginType = null;
         const API_BASE = '';
 
-        // 检查是否已登录
+        // ========== DOM 元素 ==========
+        const pullCord = document.getElementById('pullCord');
+        const cordPath = document.getElementById('cordPath');
+        const lampLight = document.getElementById('lampLight');
+        const loginMethods = document.getElementById('loginMethods');
+        const loginFormContainer = document.getElementById('loginFormContainer');
+        const wechatModal = document.getElementById('wechatModal');
+        const qrContainer = document.getElementById('qrContainer');
+        const loginForm = document.getElementById('loginForm');
+        const errorMsg = document.getElementById('errorMsg');
+        const submitBtn = document.getElementById('submitBtn');
+
+        // ========== 初始化日期 ==========
+        const today = new Date();
+        document.getElementById('footerDate').textContent = today.toLocaleDateString('zh-CN', {
+            year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+        });
+
+        // ========== 检查登录状态 ==========
         if (localStorage.getItem('token')) {
             window.location.href = '/index.html';
         }
 
-        function switchTab(tab) {
-            const loginForm = document.getElementById('loginForm');
-            const registerForm = document.getElementById('registerForm');
-            const loginTab = document.getElementById('loginTab');
-            const registerTab = document.getElementById('registerTab');
-            const errorMessage = document.getElementById('errorMessage');
+        // ========== 音效 ==========
+        function playClickSound() {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
 
-            errorMessage.classList.add('hidden');
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
 
-            if (tab === 'login') {
-                loginForm.classList.remove('hidden');
-                registerForm.classList.add('hidden');
-                loginTab.classList.add('bg-zinc-100', 'text-zinc-900');
-                loginTab.classList.remove('text-zinc-400');
-                registerTab.classList.remove('bg-zinc-100', 'text-zinc-900');
-                registerTab.classList.add('text-zinc-400');
+            oscillator.frequency.value = 800;
+            oscillator.type = 'square';
+
+            gainNode.gain.setValueAtTime(0.25, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.08);
+        }
+
+        // ========== 颜色系统 ==========
+        function getRandomHue() {
+            const hues = [20, 45, 180, 210, 280, 320];
+            return hues[Math.floor(Math.random() * hues.length)];
+        }
+
+        function updateTheme(hue) {
+            document.documentElement.style.setProperty('--shade-hue', hue);
+        }
+
+        // ========== 台灯控制 ==========
+        function toggleLamp() {
+            isLampOn = !isLampOn;
+            document.documentElement.style.setProperty('--on', isLampOn ? 1 : 0);
+
+            const eyes = document.querySelectorAll('.lamp-eye');
+
+            if (isLampOn) {
+                const hue = getRandomHue();
+                updateTheme(hue);
+
+                eyes.forEach(e => {
+                    e.classList.remove('off');
+                    e.style.transform = 'rotate(0deg)';
+                });
+
+                playClickSound();
+                setTimeout(() => {
+                    loginMethods.classList.add('visible', 'lit');
+                }, 250);
+
             } else {
-                loginForm.classList.add('hidden');
-                registerForm.classList.remove('hidden');
-                registerTab.classList.add('bg-zinc-100', 'text-zinc-900');
-                registerTab.classList.remove('text-zinc-400');
-                loginTab.classList.remove('bg-zinc-100', 'text-zinc-900');
-                loginTab.classList.add('text-zinc-400');
+                eyes.forEach(e => {
+                    e.classList.add('off');
+                    e.style.transform = 'rotate(180deg)';
+                });
+
+                playClickSound();
+                loginMethods.classList.remove('visible', 'lit');
+                loginFormContainer.classList.remove('visible', 'lit');
             }
         }
 
-        async function handleLogin(e) {
+        // ========== GSAP Draggable ==========
+        let startY = 0;
+        let pullDistance = 0;
+
+        Draggable.create(pullCord, {
+            type: 'y',
+            bounds: { minY: 0, maxY: 70 },
+            onDragStart: function() {
+                startY = this.y;
+            },
+            onDrag: function() {
+                pullDistance = this.y - startY;
+                const bend = Math.min(pullDistance * 0.4, 18);
+                const newPath = `M90,120 Q${90 - bend},${145 + pullDistance * 0.25} 90,${175 + pullDistance}`;
+                gsap.to(cordPath, { attr: { d: newPath }, duration: 0.08 });
+            },
+            onDragEnd: function() {
+                gsap.to(cordPath, {
+                    attr: { d: 'M90,120 Q90,145 90,175' },
+                    duration: 0.35,
+                    ease: 'elastic.out(1, 0.5)'
+                });
+
+                gsap.to(pullCord, {
+                    y: 0,
+                    duration: 0.35,
+                    ease: 'elastic.out(1, 0.5)'
+                });
+
+                if (pullDistance > 50) {
+                    toggleLamp();
+                }
+                pullDistance = 0;
+            }
+        });
+
+        // ========== 面板切换 ==========
+        function showMethodsPanel() {
+            loginFormContainer.classList.remove('visible', 'lit');
+            setTimeout(() => {
+                loginMethods.classList.add('visible', 'lit');
+            }, 150);
+        }
+
+        function showPasswordForm() {
+            loginMethods.classList.remove('visible', 'lit');
+            loginType = 'password';
+
+            setTimeout(() => {
+                loginFormContainer.classList.add('visible', 'lit');
+            }, 200);
+        }
+
+        // ========== GitHub 登录 ==========
+        function githubLogin() {
+            updateTheme(210); // GitHub 蓝
+            window.location.href = '/api/auth/github/login';
+        }
+
+        // ========== 微信登录 ==========
+        let wechatPollInterval = null;
+        let wechatState = null;
+
+        function wechatLogin() {
+            updateTheme(140); // 微信绿
+            fetch(`${API_BASE}/api/auth/wechat/qrcode`)
+                .then(r => r.json())
+                .then(data => {
+                    wechatState = data.state;
+                    showWechatModal(data.qrCodeUrl);
+                    startWechatPoll(data.state);
+                })
+                .catch(() => {
+                    qrContainer.innerHTML = '<div style="color:#ff6b6b;font-size:13px;">获取二维码失败</div>';
+                    wechatModal.classList.add('active');
+                });
+        }
+
+        function showWechatModal(qrUrl) {
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="微信登录二维码">`;
+            wechatModal.classList.add('active');
+        }
+
+        function closeWechatModal() {
+            wechatModal.classList.remove('active');
+            if (wechatPollInterval) {
+                clearInterval(wechatPollInterval);
+                wechatPollInterval = null;
+            }
+        }
+
+        function startWechatPoll(state) {
+            let count = 0;
+            wechatPollInterval = setInterval(() => {
+                count++;
+                if (count > 90) {
+                    closeWechatModal();
+                    showError('登录超时');
+                    return;
+                }
+                fetch(`${API_BASE}/api/auth/wechat/poll?state=${state}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            closeWechatModal();
+                            localStorage.setItem('token', data.token);
+                            window.location.href = '/index.html';
+                        } else if (data.status === 'error') {
+                            closeWechatModal();
+                            showError(data.error || '登录失败');
+                        }
+                    })
+                    .catch(() => {});
+            }, 2000);
+        }
+
+        // ========== 表单提交 ==========
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = document.getElementById('loginUsername').value;
-            const password = document.getElementById('loginPassword').value;
-            const errorMessage = document.getElementById('errorMessage');
+            hideError();
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                showError('请填写完整信息');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner"></span><span class="btn-text">登录中</span>';
 
             try {
                 const response = await fetch(`${API_BASE}/api/auth/login`, {
@@ -146,64 +895,71 @@
                     body: JSON.stringify({ username, password })
                 });
 
-                const data = await response.json();
+                const result = await response.json();
 
-                if (response.ok) {
-                    localStorage.setItem('token', data.token);
+                if (response.ok && result.token) {
+                    localStorage.setItem('token', result.token);
                     window.location.href = '/index.html';
                 } else {
-                    errorMessage.textContent = data.error || '登录失败';
-                    errorMessage.classList.remove('hidden');
+                    showError(result.message || result.error || '登录失败');
                 }
-            } catch (error) {
-                errorMessage.textContent = '网络错误，请稍后重试';
-                errorMessage.classList.remove('hidden');
+            } catch (err) {
+                showError('网络错误，请稍后重试');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span class="btn-text">登录</span>';
             }
+        });
+
+        // ========== 错误处理 ==========
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.classList.add('visible');
         }
 
-        async function handleRegister(e) {
-            e.preventDefault();
-            const username = document.getElementById('registerUsername').value;
-            const nickname = document.getElementById('registerNickname').value;
-            const password = document.getElementById('registerPassword').value;
-            const confirmPassword = document.getElementById('registerConfirmPassword').value;
-            const errorMessage = document.getElementById('errorMessage');
+        function hideError() {
+            errorMsg.classList.remove('visible');
+        }
 
-            if (password !== confirmPassword) {
-                errorMessage.textContent = '两次密码输入不一致';
-                errorMessage.classList.remove('hidden');
-                return;
-            }
+        // ========== GitHub 回调检测 ==========
+        const urlParams = new URLSearchParams(window.location.search);
+        const githubStateParam = urlParams.get('github_state');
+        if (githubStateParam) {
+            startGithubPoll(githubStateParam);
+        }
 
-            try {
-                const response = await fetch(`${API_BASE}/api/auth/register`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, confirmPassword, nickname })
-                });
+        let githubPollInterval = null;
 
-                const data = await response.json();
-
-                if (response.ok) {
-                    // 注册成功后自动登录
-                    const loginResponse = await fetch(`${API_BASE}/api/auth/login`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
-                    });
-                    const loginData = await loginResponse.json();
-                    if (loginResponse.ok) {
-                        localStorage.setItem('token', loginData.token);
-                        window.location.href = '/index.html';
-                    }
-                } else {
-                    errorMessage.textContent = data.error || '注册失败';
-                    errorMessage.classList.remove('hidden');
+        function startGithubPoll(state) {
+            let count = 0;
+            githubPollInterval = setInterval(() => {
+                count++;
+                if (count > 60) {
+                    clearInterval(githubPollInterval);
+                    showError('登录超时');
+                    return;
                 }
-            } catch (error) {
-                errorMessage.textContent = '网络错误，请稍后重试';
-                errorMessage.classList.remove('hidden');
-            }
+                fetch(`${API_BASE}/api/auth/github/poll?state=${state}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            clearInterval(githubPollInterval);
+                            localStorage.setItem('token', data.token);
+                            window.location.href = '/index.html';
+                        } else if (data.status === 'error') {
+                            clearInterval(githubPollInterval);
+                            showError(data.error || '登录失败');
+                        }
+                    })
+                    .catch(() => {});
+            }, 2000);
+        }
+
+        // 微信回调检测
+        const wechatStateParam = urlParams.get('wechat_state');
+        if (wechatStateParam) {
+            wechatState = wechatStateParam;
+            startWechatPoll(wechatStateParam);
         }
     </script>
 </body>

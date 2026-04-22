@@ -3,8 +3,12 @@ package com.lww.medical.controller;
 import com.lww.medical.dto.SessionDetailDTO;
 import com.lww.medical.dto.SessionSummaryDTO;
 import com.lww.medical.service.RedisMemoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,18 +21,32 @@ import java.util.List;
 @RequestMapping("/api/memory")
 public class MemoryController {
 
+    private static final Logger log = LoggerFactory.getLogger(MemoryController.class);
+
     @Autowired
     private RedisMemoryService redisMemoryService;
 
     /**
      * 获取用户的会话列表（按最后活跃时间倒序）
      *
-     * @param userId 用户 ID
+     * @param userId 用户 ID（可选，优先从认证信息获取）
      * @return 会话摘要列表
      */
     @GetMapping("/sessions")
-    public ResponseEntity<List<SessionSummaryDTO>> getSessions(@RequestParam String userId) {
-        List<SessionSummaryDTO> sessions = redisMemoryService.getSessions(userId);
+    public ResponseEntity<List<SessionSummaryDTO>> getSessions(
+            @RequestParam(required = false) String userId) {
+
+        // 优先从认证信息获取 userId
+        String effectiveUserId = getUserIdFromAuth();
+
+        // 如果认证信息中没有，使用传入的参数
+        if (effectiveUserId == null || "anonymousUser".equals(effectiveUserId)) {
+            effectiveUserId = userId != null ? userId : "default_user";
+        }
+
+        log.debug("获取会话列表, userId: {}", effectiveUserId);
+
+        List<SessionSummaryDTO> sessions = redisMemoryService.getSessions(effectiveUserId);
         return ResponseEntity.ok(sessions);
     }
 
@@ -67,12 +85,36 @@ public class MemoryController {
     /**
      * 获取用户会话总数
      *
-     * @param userId 用户 ID
+     * @param userId 用户 ID（可选，优先从认证信息获取）
      * @return 会话数量
      */
     @GetMapping("/sessions/count")
-    public ResponseEntity<Long> getSessionCount(@RequestParam String userId) {
-        long count = redisMemoryService.getSessionCount(userId);
+    public ResponseEntity<Long> getSessionCount(
+            @RequestParam(required = false) String userId) {
+
+        // 优先从认证信息获取 userId
+        String effectiveUserId = getUserIdFromAuth();
+
+        if (effectiveUserId == null || "anonymousUser".equals(effectiveUserId)) {
+            effectiveUserId = userId != null ? userId : "default_user";
+        }
+
+        long count = redisMemoryService.getSessionCount(effectiveUserId);
         return ResponseEntity.ok(count);
+    }
+
+    /**
+     * 从 SecurityContextHolder 获取当前用户 ID
+     */
+    private String getUserIdFromAuth() {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && authentication.isAuthenticated()) {
+                return authentication.getName();
+            }
+        } catch (Exception e) {
+            log.debug("获取认证信息失败: {}", e.getMessage());
+        }
+        return null;
     }
 }

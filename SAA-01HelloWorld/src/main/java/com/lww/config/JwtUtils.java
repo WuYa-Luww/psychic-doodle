@@ -110,4 +110,12 @@ public class JwtUtils {
             return false;
         }
     }
+
+    /**
+     * 根据用户名直接生成 token（用于 OAuth 登录）
+     */
+    public String generateTokenFromUsername(String username) {
+        Map<String, Object> claims = new HashMap<>();
+        return createToken(claims, username);
+    }
 }

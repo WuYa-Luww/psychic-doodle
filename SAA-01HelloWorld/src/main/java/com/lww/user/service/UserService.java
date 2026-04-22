@@ -88,6 +88,13 @@ public class UserService {
     }
 
     /**
+     * 根据用户名查找用户
+     */
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username).orElse(null);
+    }
+
+    /**
      * 获取当前用户响应
      */
     public UserResponse getCurrentUserResponse() {
